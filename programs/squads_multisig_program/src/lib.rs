@@ -7,6 +7,7 @@
 // Re-export anchor_lang for convenience.
 pub use anchor_lang;
 use anchor_lang::prelude::*;
+use light_sdk::{light_program, context::LightContext};
 #[cfg(not(feature = "no-entrypoint"))]
 use solana_security_txt::security_txt;
 
@@ -38,6 +39,7 @@ declare_id!("SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf");
 #[cfg(feature = "testing")]
 declare_id!("GyhGAqjokLwF9UXdQ2dR5Zwiup242j4mX4J1tSMKyAmD");
 
+#[light_program]
 #[program]
 pub mod squads_multisig_program {
     use errors::MultisigError;
@@ -83,9 +85,9 @@ pub mod squads_multisig_program {
     }
 
     /// Create a multisig.
-    pub fn multisig_create_v2(
-        ctx: Context<MultisigCreateV2>,
-        args: MultisigCreateArgsV2,
+    pub fn multisig_create_v2<'info>(
+        ctx: LightContext<'_, '_, '_, 'info ,MultisigCreateV2<'info>>,
+        args: MultisigCreateV2Args,
     ) -> Result<()> {
         MultisigCreateV2::multisig_create(ctx, args)
     }

@@ -1,6 +1,12 @@
-#![allow(deprecated)]
 use anchor_lang::prelude::*;
 use anchor_lang::system_program;
+use crate::ParamsMultisigCreateV2;
+
+use light_sdk::compressed_account::LightAccounts;
+use light_sdk::{
+    compressed_account::LightAccount, context::LightContext, light_account, light_accounts,
+    merkle_context::PackedAddressMerkleContext,
+};
 use solana_program::native_token::LAMPORTS_PER_SOL;
 
 use crate::errors::MultisigError;
@@ -14,7 +20,7 @@ pub struct Deprecated<'info> {
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
-pub struct MultisigCreateArgsV2 {
+pub struct MultisigCreateV2Args {
     /// The authority that can configure the multisig: add/remove members, change the threshold, etc.
     /// Should be set to `None` for autonomous multisigs.
     pub config_authority: Option<Pubkey>,
@@ -31,8 +37,10 @@ pub struct MultisigCreateArgsV2 {
     pub memo: Option<String>,
 }
 
-#[derive(Accounts)]
-#[instruction(args: MultisigCreateArgsV2)]
+
+
+
+#[light_accounts]
 pub struct MultisigCreateV2<'info> {
     /// Global program config account.
     #[account(seeds = [SEED_PREFIX, SEED_PROGRAM_CONFIG], bump)]
@@ -43,27 +51,29 @@ pub struct MultisigCreateV2<'info> {
     #[account(mut)]
     pub treasury: AccountInfo<'info>,
 
-    #[account(
+    #[light_account(
         init,
-        payer = creator,
-        space = Multisig::size(args.members.len()),
         seeds = [SEED_PREFIX, SEED_MULTISIG, create_key.key().as_ref()],
-        bump
     )]
-    pub multisig: Account<'info, Multisig>,
+    pub multisig: LightAccount<LightMultisig>,
 
     /// An ephemeral signer that is used as a seed for the Multisig PDA.
     /// Must be a signer to prevent front-running attack by someone else but the original creator.
     pub create_key: Signer<'info>,
 
     /// The creator of the multisig.
+    #[fee_payer]
     #[account(mut)]
     pub creator: Signer<'info>,
 
-    pub system_program: Program<'info, System>,
+    /// CHECK: Checked in light-system-program.
+    #[authority]
+    pub cpi_authority: AccountInfo<'info>,
+    #[self_program]
+    pub squads_program: Program<'info, crate::program::SquadsMultisigProgram>,
 }
 
-impl MultisigCreateV2<'_> {
+impl<'info> MultisigCreateV2<'info> {
     fn validate(&self) -> Result<()> {
         //region treasury
         require_keys_eq!(
@@ -78,24 +88,29 @@ impl MultisigCreateV2<'_> {
 
     /// Creates a multisig.
     #[access_control(ctx.accounts.validate())]
-    pub fn multisig_create(ctx: Context<Self>, args: MultisigCreateArgsV2) -> Result<()> {
+    pub fn multisig_create(
+        mut ctx: LightContext<Self, LightMultisigCreateV2>,
+        args: MultisigCreateV2Args,
+    ) -> Result<()> {
         // Sort the members by pubkey.
         let mut members = args.members;
         members.sort_by_key(|m| m.key);
 
         // Initialize the multisig.
-        let multisig = &mut ctx.accounts.multisig;
-        multisig.config_authority = args.config_authority.unwrap_or_default();
-        multisig.threshold = args.threshold;
-        multisig.time_lock = args.time_lock;
-        multisig.transaction_index = 0;
-        multisig.stale_transaction_index = 0;
-        multisig.create_key = ctx.accounts.create_key.key();
-        multisig.bump = ctx.bumps.multisig;
-        multisig.members = members;
-        multisig.rent_collector = args.rent_collector;
+        let create_key = &ctx.accounts.create_key;
+        let multisig_bump = Pubkey::find_program_address(&[SEED_PREFIX, SEED_MULTISIG, create_key.key().as_ref()], &crate::id()).1;
 
-        multisig.invariant()?;
+        ctx.light_accounts.multisig.config_authority = args.config_authority.unwrap_or_default();
+        ctx.light_accounts.multisig.threshold = args.threshold;
+        ctx.light_accounts.multisig.time_lock = args.time_lock;
+        ctx.light_accounts.multisig.transaction_index = 0;
+        ctx.light_accounts.multisig.stale_transaction_index = 0;
+        ctx.light_accounts.multisig.create_key = ctx.accounts.create_key.key();
+        ctx.light_accounts.multisig.bump = multisig_bump;
+        ctx.light_accounts.multisig.members = MemberList(members);
+        ctx.light_accounts.multisig.rent_collector = args.rent_collector;
+
+        ctx.light_accounts.multisig.invariant()?;
 
         let creation_fee = ctx.accounts.program_config.multisig_creation_fee;
 

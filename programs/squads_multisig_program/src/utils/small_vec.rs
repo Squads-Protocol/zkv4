@@ -31,6 +31,9 @@ impl<L, T> From<Vec<T>> for SmallVec<L, T> {
     }
 }
 
+#[cfg(feature = "idl-build")]
+impl<L, T> anchor_lang::IdlBuild for SmallVec<L, T> {}
+
 impl<T: AnchorSerialize> AnchorSerialize for SmallVec<u8, T> {
     fn serialize<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
         let len = u8::try_from(self.len()).map_err(|_| std::io::ErrorKind::InvalidInput)?;
