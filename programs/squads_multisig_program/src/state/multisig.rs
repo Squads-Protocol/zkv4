@@ -5,6 +5,7 @@ use anchor_lang::system_program;
 use light_hasher::bytes::AsByteVec;
 use light_sdk::light_account;
 use light_sdk::LightHasher;
+use light_utils::hash_to_bn254_field_size_be;
 
 use crate::errors::*;
 use crate::id;
@@ -15,6 +16,7 @@ pub const MAX_TIME_LOCK: u32 = 3 * 30 * 24 * 60 * 60; // 3 months
 #[derive(Clone, Debug, Default)]
 pub struct LightMultisig {
     /// Key that is used to seed the multisig PDA.
+    #[truncate]
     pub create_key: Pubkey,
     /// The authority that can change the multisig config.
     /// This is a very important parameter as this authority can change the members and threshold.
@@ -25,6 +27,7 @@ pub struct LightMultisig {
     ///
     /// However, if this parameter is set to any other key, all the config changes for this multisig
     /// will need to be signed by the `config_authority`. We call such a multisig a "controlled multisig".
+    #[truncate]
     pub config_authority: Pubkey,
     /// Threshold for signatures.
     pub threshold: u16,
@@ -37,14 +40,14 @@ pub struct LightMultisig {
     pub stale_transaction_index: u64,
     /// The address where the rent for the accounts related to executed, rejected, or cancelled
     /// transactions can be reclaimed. If set to `None`, the rent reclamation feature is turned off.
-    pub rent_collector: Option<Pubkey>,
+    #[truncate]
+    pub rent_collector: OptionPubkey,
     /// Bump for the multisig PDA seed.
     pub bump: u8,
-    #[truncate]
     /// Members of the multisig.
+    #[truncate]
     pub members: MemberList,
 }
-
 
 #[account]
 pub struct Multisig {
@@ -452,7 +455,8 @@ impl LightMultisig {
     /// Returns `Some(index)` if `member_pubkey` is a member, with `index` into the `members` vec.
     /// `None` otherwise.
     pub fn is_member(&self, member_pubkey: Pubkey) -> Option<usize> {
-        self.members.0
+        self.members
+            .0
             .binary_search_by_key(&member_pubkey, |m| m.key)
             .ok()
     }
@@ -496,15 +500,16 @@ impl LightMultisig {
         Ok(())
     }
 }
-#[derive(AnchorDeserialize, AnchorSerialize, InitSpace, Eq, PartialEq, Clone, Debug)]
-#[derive(LightHasher)]
+#[derive(
+    AnchorDeserialize, AnchorSerialize, InitSpace, Eq, PartialEq, Clone, Debug, LightHasher,
+)]
 pub struct Member {
+    #[truncate]
     pub key: Pubkey,
     pub permissions: Permissions,
 }
 
-
-#[derive(Clone, Copy,)]
+#[derive(Clone, Copy)]
 pub enum Permission {
     Initiate = 1 << 0,
     Vote = 1 << 1,
@@ -513,7 +518,16 @@ pub enum Permission {
 
 /// Bitmask for permissions.
 #[derive(
-    AnchorSerialize, AnchorDeserialize, InitSpace, Eq, PartialEq, Clone, Copy, Default, Debug, LightHasher
+    AnchorSerialize,
+    AnchorDeserialize,
+    InitSpace,
+    Eq,
+    PartialEq,
+    Clone,
+    Copy,
+    Default,
+    Debug,
+    LightHasher,
 )]
 pub struct Permissions {
     pub mask: u8,
@@ -534,15 +548,47 @@ impl Permissions {
     }
 }
 
-
 /// Stuff for light account serialization
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, Default)]
 pub struct MemberList(pub Vec<Member>);
 
 impl AsByteVec for MemberList {
     fn as_byte_vec(&self) -> Vec<Vec<u8>> {
-        self.0.iter()
-            .flat_map(|member| member.as_byte_vec())
+        self.0
+            .iter()
+            .map(|member| {
+                let member_bytes = member.try_to_vec().unwrap();
+                let truncated_member_bytes = hash_to_bn254_field_size_be(&member_bytes.as_slice())
+                    .unwrap()
+                    .0;
+                truncated_member_bytes.to_vec()
+            })
             .collect()
+    }
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct OptionPubkey(pub Option<Pubkey>);
+
+impl Default for OptionPubkey {
+    fn default() -> Self {
+        Self(None)
+    }
+}
+
+// Implement AsByteVec for TruncatedOptionPubkey
+impl AsByteVec for OptionPubkey {
+    fn as_byte_vec(&self) -> Vec<Vec<u8>> {
+        match &self.0 {
+            Some(pubkey) => {
+                let pubkey_bytes = pubkey.try_to_vec().unwrap();
+                let truncated_pubkey_bytes =
+                    hash_to_bn254_field_size_be(&pubkey_bytes.as_slice())
+                        .unwrap()
+                        .0;
+                vec![truncated_pubkey_bytes.to_vec()]
+            },
+            None => vec![vec![0u8; 32]]  // or whatever default you want for None case
+        }
     }
 }

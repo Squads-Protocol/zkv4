@@ -1,13 +1,15 @@
 import {
+  AccountMeta,
   Connection,
   PublicKey,
   SendOptions,
   Signer,
   TransactionSignature,
 } from "@solana/web3.js";
-import { Member } from "../generated";
-import * as transactions from "../transactions";
 import { translateAndThrowAnchorError } from "../errors";
+import { Member } from "../generated";
+import { LightArgs, LightSpecificAccounts } from "../instructions";
+import * as transactions from "../transactions";
 
 /** Creates a new multisig. */
 export async function multisigCreateV2({
@@ -24,6 +26,9 @@ export async function multisigCreateV2({
   memo,
   sendOptions,
   programId,
+  lightAccounts,
+  lightArgs,
+  remainingAccounts
 }: {
   connection: Connection;
   treasury: PublicKey;
@@ -35,9 +40,12 @@ export async function multisigCreateV2({
   members: Member[];
   timeLock: number;
   rentCollector: PublicKey | null;
+  lightAccounts: LightSpecificAccounts,
+  lightArgs: LightArgs
   memo?: string;
   sendOptions?: SendOptions;
   programId?: PublicKey;
+  remainingAccounts?: AccountMeta[];
 }): Promise<TransactionSignature> {
   const blockhash = (await connection.getLatestBlockhash()).blockhash;
 
@@ -54,12 +62,15 @@ export async function multisigCreateV2({
     rentCollector,
     memo,
     programId,
+    lightAccounts,
+    lightArgs,
+    remainingAccounts
   });
 
   tx.sign([creator, createKey]);
 
   try {
-    return await connection.sendTransaction(tx, sendOptions);
+    return await connection.sendRawTransaction(tx.serialize(), sendOptions);
   } catch (err) {
     translateAndThrowAnchorError(err);
   }

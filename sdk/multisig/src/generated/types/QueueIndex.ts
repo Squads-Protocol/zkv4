@@ -6,21 +6,19 @@
  */
 
 import * as beet from '@metaplex-foundation/beet'
-/**
- * @category enums
- * @category generated
- */
-export enum Vote {
-  Approve,
-  Reject,
-  Cancel,
+export type QueueIndex = {
+  queueId: number
+  index: number
 }
 
 /**
  * @category userTypes
  * @category generated
  */
-export const voteBeet = beet.fixedScalarEnum(Vote) as beet.FixedSizeBeet<
-  Vote,
-  Vote
->
+export const queueIndexBeet = new beet.BeetArgsStruct<QueueIndex>(
+  [
+    ['queueId', beet.u8],
+    ['index', beet.u16],
+  ],
+  'QueueIndex'
+)

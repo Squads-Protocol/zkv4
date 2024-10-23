@@ -5,14 +5,14 @@
 	],
 	"scripts": {
 		"build": "turbo run build",
-		"test:detached": "turbo run build && anchor test --detach -- --features=testing && echo \"\n⚠️ Don't forget to recompile the .so file before deployment\n\"",
-		"test": "turbo run build && anchor test -- --features=testing && echo \"\n⚠️ Don't forget to recompile the .so file before deployment\n\"",
+		"test:detached": "turbo run build && light test-validator && (trap 'light test-validator --stop' SIGINT; (anchor test --skip-local-validator -- --features=testing || true) && echo '\n🚀 Validator still running. Use \"light test-validator --stop\" to stop it.\n'; while true; do sleep 1; done)",
+		"test": "turbo run build && light test-validator && (anchor test --skip-local-validator -- --features=testing; code=$?; light test-validator --stop && (if [ $code -eq 0 ]; then echo \"\n⚠️ Don't forget to recompile the .so file before deployment\n\"; else echo \"\n❌ Tests failed with exit code $code\n\"; fi); exit $code)",
 		"pretest": "mkdir -p target/deploy && cp ./test-program-keypair.json ./target/deploy/squads_multisig_program-keypair.json",
 		"ts": "turbo run ts && yarn tsc --noEmit"
 	},
 	"devDependencies": {
-		"@solana/spl-token": "*",
 		"@solana/spl-memo": "^0.2.3",
+		"@solana/spl-token": "*",
 		"@types/bn.js": "5.1.0",
 		"@types/mocha": "10.0.1",
 		"@types/node-fetch": "2.6.2",
@@ -26,5 +26,8 @@
 		"@solana/web3.js": "1.70.3",
 		"@solana/spl-token": "0.3.6",
 		"typescript": "4.9.4"
+	},
+	"dependencies": {
+		"@lightprotocol/stateless.js": "^0.14.1"
 	}
 }

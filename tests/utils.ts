@@ -1,3 +1,4 @@
+import { bn, createRpc, defaultStaticAccountsStruct, defaultTestStateTreeAccounts, deriveAddress, deriveAddressSeed, getIndexOrAdd, LightSystemProgram, NewAddressParams, packCompressedAccounts, PackedMerkleContext, packNewAddressParams, toAccountMetas } from "@lightprotocol/stateless.js";
 import { createMemoInstruction } from "@solana/spl-memo";
 import {
   Connection,
@@ -6,9 +7,11 @@ import {
   PublicKey,
   SystemProgram,
   TransactionMessage,
-  VersionedTransaction,
+  VersionedTransaction
 } from "@solana/web3.js";
 import * as multisig from "@sqds/multisig";
+import { PackedAddressMerkleContext } from "@sqds/multisig/lib/generated";
+import { LightArgs, LightSpecificAccounts } from "@sqds/multisig/lib/instructions";
 import assert from "assert";
 import { readFileSync } from "fs";
 import path from "path";
@@ -133,6 +136,97 @@ export const getLogs = async (connection: Connection, signature: string): Promis
   return tx!.meta!.logMessages || []
 }
 
+export async function setupCompressionParams(createKey: PublicKey, programId: PublicKey) {
+  const {
+    accountCompressionAuthority,
+    noopProgram,
+    registeredProgramPda,
+    accountCompressionProgram,
+  } = defaultStaticAccountsStruct();
+
+  const cpiAuthority = PublicKey.findProgramAddressSync(
+    [Buffer.from("cpi_authority")],
+    programId
+  )[0];
+
+  const lightAccounts: LightSpecificAccounts = {
+    accountCompressionAuthority,
+    noopProgram,
+    registeredProgramPda,
+    accountCompressionProgram,
+    lightSystemProgram: LightSystemProgram.programId,
+    cpiAuthority,
+    squadsProgram: programId
+  };
+
+  const stateTree = defaultTestStateTreeAccounts()?.merkleTree;
+  const stateQueue = defaultTestStateTreeAccounts()?.nullifierQueue;
+  const addressTree = defaultTestStateTreeAccounts()?.addressTree;
+  const addressQueue = defaultTestStateTreeAccounts()?.addressQueue;
+
+  const zkMultisigSeeds = deriveAddressSeed(
+    [Buffer.from("multisig"), Buffer.from("multisig"), createKey.toBytes()],
+    programId
+  );
+  const zkMultisigAddress = deriveAddress(zkMultisigSeeds, addressTree);
+
+  const zkRpc = createRpc(new Connection("http://127.0.0.1:8899"));
+  const proof = await zkRpc.getValidityProofV0(
+    undefined,
+    [{
+      address: bn(zkMultisigAddress.toBytes()),
+      tree: addressTree,
+      queue: addressQueue,
+    }]
+  );
+
+  const newAddressParams: NewAddressParams = {
+    seed: zkMultisigSeeds,
+    addressMerkleTreeRootIndex: proof.rootIndices[0],
+    addressMerkleTreePubkey: proof.merkleTrees[0],
+    addressQueuePubkey: proof.nullifierQueues[0],
+  };
+
+  const outputCompressedAccounts = LightSystemProgram.createNewAddressOutputState(
+    Array.from(zkMultisigAddress.toBytes()),
+    programId
+  );
+
+  const { remainingAccounts: _remainingAccounts } = packCompressedAccounts(
+    [],
+    [],
+    outputCompressedAccounts
+  );
+
+  const { newAddressParamsPacked, remainingAccounts } = packNewAddressParams(
+    [newAddressParams],
+    _remainingAccounts
+  );
+
+  const merkleContext: PackedMerkleContext = {
+    leafIndex: 0,
+    merkleTreePubkeyIndex: getIndexOrAdd(remainingAccounts, stateTree),
+    nullifierQueuePubkeyIndex: getIndexOrAdd(remainingAccounts, stateQueue),
+    queueIndex: null,
+  };
+
+  const addressMerkleContext: PackedAddressMerkleContext = {
+    addressMerkleTreePubkeyIndex: newAddressParamsPacked[0].addressMerkleTreeAccountIndex,
+    addressQueuePubkeyIndex: newAddressParamsPacked[0].addressQueueAccountIndex,
+  };
+
+  const lightArgs: LightArgs = {
+    inputs: [],
+    proof: proof.compressedProof,
+    merkleContext,
+    addressMerkleContext,
+    addressMerkleTreeRootIndex: newAddressParamsPacked[0].addressMerkleTreeRootIndex,
+    merkleTreeRootIndex: 0,
+  };
+
+  return { multisigPda: zkMultisigAddress, lightAccounts, lightArgs, remainingAccounts: toAccountMetas(remainingAccounts) };
+}
+
 export async function createAutonomousMultisig({
   connection,
   createKey = Keypair.generate(),
@@ -149,10 +243,7 @@ export async function createAutonomousMultisig({
   programId: PublicKey;
 }) {
 
-  const [multisigPda, multisigBump] = multisig.getMultisigPda({
-    createKey: createKey.publicKey,
-    programId,
-  });
+  const { multisigPda, lightAccounts, lightArgs, remainingAccounts } = await setupCompressionParams(createKey.publicKey, programId);
 
   await createAutonomousMultisigV2({
     connection,
@@ -164,7 +255,7 @@ export async function createAutonomousMultisig({
     programId,
   });
 
-  return [multisigPda, multisigBump] as const;
+  return [multisigPda] as const;
 }
 
 export async function createAutonomousMultisigV2({
@@ -175,6 +266,7 @@ export async function createAutonomousMultisigV2({
   timeLock,
   rentCollector,
   programId,
+  sendOptions,
 }: {
   createKey?: Keypair;
   members: TestMembers;
@@ -183,20 +275,17 @@ export async function createAutonomousMultisigV2({
   rentCollector: PublicKey | null;
   connection: Connection;
   programId: PublicKey;
+  sendOptions?: { skipPreflight: boolean };
 }) {
   const creator = await generateFundedKeypair(connection);
 
-  const programConfig =
-    await multisig.accounts.ProgramConfig.fromAccountAddress(
-      connection,
-      multisig.getProgramConfigPda({ programId })[0]
-    );
+  const programConfig = await multisig.accounts.ProgramConfig.fromAccountAddress(
+    connection,
+    multisig.getProgramConfigPda({ programId })[0]
+  );
   const programTreasury = programConfig.treasury;
 
-  const [multisigPda, multisigBump] = multisig.getMultisigPda({
-    createKey: createKey.publicKey,
-    programId,
-  });
+  const { multisigPda, lightAccounts, lightArgs, remainingAccounts } = await setupCompressionParams(createKey.publicKey, programId);
 
   const signature = await multisig.rpc.multisigCreateV2({
     connection,
@@ -223,13 +312,16 @@ export async function createAutonomousMultisigV2({
     ],
     createKey: createKey,
     rentCollector,
-    sendOptions: { skipPreflight: true },
+    sendOptions: sendOptions,
     programId,
+    lightAccounts,
+    lightArgs,
+    remainingAccounts
   });
 
   await connection.confirmTransaction(signature);
 
-  return [multisigPda, multisigBump] as const;
+  return [multisigPda, signature] as const;
 }
 
 export async function createControlledMultisig({
@@ -289,17 +381,17 @@ export async function createControlledMultisigV2({
   programId: PublicKey;
 }) {
   const creator = await generateFundedKeypair(connection);
+  const { multisigPda,lightAccounts, lightArgs, remainingAccounts } = await setupCompressionParams(createKey.publicKey, programId);
 
-  const [multisigPda, multisigBump] = multisig.getMultisigPda({
+  const [_multisigPda, multisigBump] = multisig.getMultisigPda({
     createKey: createKey.publicKey,
     programId,
   });
 
-  const programConfig =
-    await multisig.accounts.ProgramConfig.fromAccountAddress(
-      connection,
-      multisig.getProgramConfigPda({ programId })[0]
-    );
+  const programConfig = await multisig.accounts.ProgramConfig.fromAccountAddress(
+    connection,
+    multisig.getProgramConfigPda({ programId })[0]
+  );
   const programTreasury = programConfig.treasury;
 
   const signature = await multisig.rpc.multisigCreateV2({
@@ -329,11 +421,14 @@ export async function createControlledMultisigV2({
     rentCollector,
     sendOptions: { skipPreflight: true },
     programId,
+    lightAccounts,
+    lightArgs,
+    remainingAccounts
   });
 
   await connection.confirmTransaction(signature);
 
-  return [multisigPda, multisigBump] as const;
+  return [multisigPda, signature] as const;
 }
 
 export type MultisigWithRentReclamationAndVariousBatches = {
@@ -419,6 +514,8 @@ export async function createAutonomousMultisigWithRentReclamationAndVariousBatch
     programId,
   });
 
+  const { lightAccounts, lightArgs, remainingAccounts } = await setupCompressionParams(createKey.publicKey, programId);
+
   //region Create a multisig
   let signature = await multisig.rpc.multisigCreateV2({
     connection,
@@ -447,6 +544,9 @@ export async function createAutonomousMultisigWithRentReclamationAndVariousBatch
     rentCollector,
     sendOptions: { skipPreflight: true },
     programId,
+    lightAccounts,
+    lightArgs,
+    remainingAccounts
   });
   await connection.confirmTransaction(signature);
   //endregion

@@ -31,6 +31,8 @@ impl<L, T> From<Vec<T>> for SmallVec<L, T> {
     }
 }
 
+// This is just to make the compiler happy.
+// SmallVec won't be included in the IDL.
 #[cfg(feature = "idl-build")]
 impl<L, T> anchor_lang::IdlBuild for SmallVec<L, T> {}
 

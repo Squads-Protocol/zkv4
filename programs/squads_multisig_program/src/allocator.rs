@@ -128,6 +128,6 @@ unsafe impl std::alloc::GlobalAlloc for BumpAllocator {
 }
 
 // Only use the allocator if we're not in a no-entrypoint context
-#[cfg(not(feature = "no-entrypoint"))]
+#[cfg(all(not(feature = "no-entrypoint"), not(test)))]
 #[global_allocator]
 static A: BumpAllocator = BumpAllocator;

@@ -7,6 +7,15 @@
 
 import * as beet from '@metaplex-foundation/beet'
 import * as web3 from '@solana/web3.js'
+import { CompressedProof, compressedProofBeet } from '../types/CompressedProof'
+import {
+  PackedMerkleContext,
+  packedMerkleContextBeet,
+} from '../types/PackedMerkleContext'
+import {
+  PackedAddressMerkleContext,
+  packedAddressMerkleContextBeet,
+} from '../types/PackedAddressMerkleContext'
 import {
   MultisigCreateArgsV2,
   multisigCreateArgsV2Beet,
@@ -18,6 +27,12 @@ import {
  * @category generated
  */
 export type MultisigCreateV2InstructionArgs = {
+  inputs: Uint8Array[]
+  proof: CompressedProof
+  merkleContext: PackedMerkleContext
+  merkleTreeRootIndex: number
+  addressMerkleContext: PackedAddressMerkleContext
+  addressMerkleTreeRootIndex: number
   args: MultisigCreateArgsV2
 }
 /**
@@ -32,6 +47,12 @@ export const multisigCreateV2Struct = new beet.FixableBeetArgsStruct<
 >(
   [
     ['instructionDiscriminator', beet.uniformFixedSizeArray(beet.u8, 8)],
+    ['inputs', beet.array(beet.bytes)],
+    ['proof', compressedProofBeet],
+    ['merkleContext', packedMerkleContextBeet],
+    ['merkleTreeRootIndex', beet.u16],
+    ['addressMerkleContext', packedAddressMerkleContextBeet],
+    ['addressMerkleTreeRootIndex', beet.u16],
     ['args', multisigCreateArgsV2Beet],
   ],
   'MultisigCreateV2InstructionArgs'
@@ -41,9 +62,15 @@ export const multisigCreateV2Struct = new beet.FixableBeetArgsStruct<
  *
  * @property [] programConfig
  * @property [_writable_] treasury
- * @property [_writable_] multisig
  * @property [**signer**] createKey
  * @property [_writable_, **signer**] creator
+ * @property [] cpiAuthority
+ * @property [] squadsProgram
+ * @property [] lightSystemProgram
+ * @property [] accountCompressionProgram
+ * @property [] registeredProgramPda
+ * @property [] noopProgram
+ * @property [] accountCompressionAuthority
  * @category Instructions
  * @category MultisigCreateV2
  * @category generated
@@ -51,10 +78,16 @@ export const multisigCreateV2Struct = new beet.FixableBeetArgsStruct<
 export type MultisigCreateV2InstructionAccounts = {
   programConfig: web3.PublicKey
   treasury: web3.PublicKey
-  multisig: web3.PublicKey
   createKey: web3.PublicKey
   creator: web3.PublicKey
+  cpiAuthority: web3.PublicKey
+  squadsProgram: web3.PublicKey
+  lightSystemProgram: web3.PublicKey
   systemProgram?: web3.PublicKey
+  accountCompressionProgram: web3.PublicKey
+  registeredProgramPda: web3.PublicKey
+  noopProgram: web3.PublicKey
+  accountCompressionAuthority: web3.PublicKey
   anchorRemainingAccounts?: web3.AccountMeta[]
 }
 
@@ -93,11 +126,6 @@ export function createMultisigCreateV2Instruction(
       isSigner: false,
     },
     {
-      pubkey: accounts.multisig,
-      isWritable: true,
-      isSigner: false,
-    },
-    {
       pubkey: accounts.createKey,
       isWritable: false,
       isSigner: true,
@@ -108,7 +136,42 @@ export function createMultisigCreateV2Instruction(
       isSigner: true,
     },
     {
+      pubkey: accounts.cpiAuthority,
+      isWritable: false,
+      isSigner: false,
+    },
+    {
+      pubkey: accounts.squadsProgram,
+      isWritable: false,
+      isSigner: false,
+    },
+    {
+      pubkey: accounts.lightSystemProgram,
+      isWritable: false,
+      isSigner: false,
+    },
+    {
       pubkey: accounts.systemProgram ?? web3.SystemProgram.programId,
+      isWritable: false,
+      isSigner: false,
+    },
+    {
+      pubkey: accounts.accountCompressionProgram,
+      isWritable: false,
+      isSigner: false,
+    },
+    {
+      pubkey: accounts.registeredProgramPda,
+      isWritable: false,
+      isSigner: false,
+    },
+    {
+      pubkey: accounts.noopProgram,
+      isWritable: false,
+      isSigner: false,
+    },
+    {
+      pubkey: accounts.accountCompressionAuthority,
       isWritable: false,
       isSigner: false,
     },

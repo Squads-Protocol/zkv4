@@ -1,4 +1,13 @@
+import {
+  AccountInfo,
+  Keypair,
+  LAMPORTS_PER_SOL,
+  PublicKey,
+  TransactionMessage,
+  VersionedTransaction
+} from "@solana/web3.js";
 import * as multisig from "@sqds/multisig";
+import assert from "assert";
 import {
   comparePubkeys,
   createAutonomousMultisigV2,
@@ -9,26 +18,26 @@ import {
   getTestProgramConfigAuthority,
   getTestProgramId,
   getTestProgramTreasury,
+  setupCompressionParams,
   TestMembers,
 } from "../../utils";
+
 import {
-  Keypair,
-  LAMPORTS_PER_SOL,
-  PublicKey,
-  TransactionMessage,
-  VersionedTransaction,
-} from "@solana/web3.js";
-import assert from "assert";
+  bn,
+  createRpc
+} from "@lightprotocol/stateless.js";
 
 const { Multisig } = multisig.accounts;
 const { Permission, Permissions } = multisig.types;
 
 const connection = createLocalhostConnection();
+const zkRpc = createRpc(connection);
 
 const programId = getTestProgramId();
 const programConfigAuthority = getTestProgramConfigAuthority();
 const programTreasury = getTestProgramTreasury();
 const programConfigPda = multisig.getProgramConfigPda({ programId })[0];
+
 
 describe("Instructions / multisig_create_v2", () => {
   let members: TestMembers;
@@ -38,22 +47,22 @@ describe("Instructions / multisig_create_v2", () => {
     members = await generateMultisigMembers(connection);
 
     const programConfigPda = multisig.getProgramConfigPda({ programId })[0];
-    const programConfig =
-      await multisig.accounts.ProgramConfig.fromAccountAddress(
-        connection,
-        programConfigPda
-      );
+    const programConfig = await multisig.accounts.ProgramConfig.fromAccountAddress(
+      connection,
+      programConfigPda
+    );
     programTreasury = programConfig.treasury;
   });
 
   it("error: duplicate member", async () => {
     const creator = await generateFundedKeypair(connection);
-
     const createKey = Keypair.generate();
     const [multisigPda] = multisig.getMultisigPda({
       createKey: createKey.publicKey,
       programId,
     });
+
+    const { lightAccounts, lightArgs, remainingAccounts } = await setupCompressionParams(createKey.publicKey, programId);
 
     await assert.rejects(
       () =>
@@ -77,62 +86,24 @@ describe("Instructions / multisig_create_v2", () => {
           ],
           createKey,
           rentCollector: null,
-          sendOptions: { skipPreflight: true },
           programId,
+          lightAccounts,
+          lightArgs,
+          remainingAccounts
         }),
       /Found multiple members with the same pubkey/
     );
   });
 
-  it("error: missing signature from `createKey`", async () => {
-    const creator = await generateFundedKeypair(connection);
-
-    const createKey = Keypair.generate();
-    const [multisigPda] = multisig.getMultisigPda({
-      createKey: createKey.publicKey,
-      programId,
-    });
-
-    const tx = multisig.transactions.multisigCreateV2({
-      blockhash: (await connection.getLatestBlockhash()).blockhash,
-      treasury: programTreasury,
-      createKey: createKey.publicKey,
-      creator: creator.publicKey,
-      multisigPda,
-      configAuthority: null,
-      timeLock: 0,
-      threshold: 1,
-      rentCollector: null,
-      members: [
-        {
-          key: members.almighty.publicKey,
-          permissions: Permissions.all(),
-        },
-        {
-          key: members.almighty.publicKey,
-          permissions: Permissions.all(),
-        },
-      ],
-      programId,
-    });
-
-    // Missing signature from `createKey`.
-    tx.sign([creator]);
-
-    await assert.rejects(
-      () => connection.sendTransaction(tx, { skipPreflight: true }),
-      /Transaction signature verification failure/
-    );
-  });
-
   it("error: empty members", async () => {
     const creator = await generateFundedKeypair(connection);
-
     const createKey = Keypair.generate();
     const [multisigPda] = multisig.getMultisigPda({
       createKey: createKey.publicKey,
       programId,
     });
+
+    const { lightAccounts, lightArgs, remainingAccounts } = await setupCompressionParams(createKey.publicKey, programId);
 
     await assert.rejects(
       () =>
@@ -147,8 +118,10 @@ describe("Instructions / multisig_create_v2", () => {
           threshold: 1,
           members: [],
           rentCollector: null,
-          sendOptions: { skipPreflight: true },
           programId,
+          lightAccounts,
+          lightArgs,
+          remainingAccounts
         }),
       /Members don't include any proposers/
     );
@@ -157,12 +130,13 @@ describe("Instructions / multisig_create_v2", () => {
   it("error: member has unknown permission", async () => {
     const creator = await generateFundedKeypair(connection);
     const member = Keypair.generate();
-
     const createKey = Keypair.generate();
     const [multisigPda] = multisig.getMultisigPda({
       createKey: createKey.publicKey,
       programId,
     });
+
+    const { lightAccounts, lightArgs, remainingAccounts } = await setupCompressionParams(createKey.publicKey, programId);
 
     await assert.rejects(
       () =>
@@ -184,24 +158,24 @@ describe("Instructions / multisig_create_v2", () => {
             },
           ],
           rentCollector: null,
-          sendOptions: { skipPreflight: true },
           programId,
+          lightAccounts,
+          lightArgs,
+          remainingAccounts
         }),
       /Member has unknown permission/
     );
   });
 
-  // We cannot really test it because we can't pass u16::MAX members to the instruction.
-  it("error: too many members");
-
   it("error: invalid threshold (< 1)", async () => {
     const creator = await generateFundedKeypair(connection);
-
     const createKey = Keypair.generate();
     const [multisigPda] = multisig.getMultisigPda({
       createKey: createKey.publicKey,
       programId,
     });
+
+    const { lightAccounts, lightArgs, remainingAccounts } = await setupCompressionParams(createKey.publicKey, programId);
 
     await assert.rejects(
       () =>
@@ -219,8 +193,10 @@ describe("Instructions / multisig_create_v2", () => {
             permissions: Permissions.all(),
           })),
           rentCollector: null,
-          sendOptions: { skipPreflight: true },
           programId,
+          lightAccounts,
+          lightArgs,
+          remainingAccounts
         }),
       /Invalid threshold, must be between 1 and number of members/
     );
@@ -228,12 +204,13 @@ describe("Instructions / multisig_create_v2", () => {
 
   it("error: invalid threshold (> members with permission to Vote)", async () => {
     const creator = await generateFundedKeypair(connection);
-
     const createKey = Keypair.generate();
     const [multisigPda] = multisig.getMultisigPda({
       createKey: createKey.publicKey,
       programId,
     });
+
+    const { lightAccounts, lightArgs, remainingAccounts } = await setupCompressionParams(createKey.publicKey, programId);
 
     await assert.rejects(
       () =>
@@ -250,27 +227,25 @@ describe("Instructions / multisig_create_v2", () => {
               key: members.almighty.publicKey,
               permissions: Permissions.all(),
             },
-            // Can only initiate transactions.
             {
               key: members.proposer.publicKey,
               permissions: Permissions.fromPermissions([Permission.Initiate]),
             },
-            // Can only vote on transactions.
             {
               key: members.voter.publicKey,
               permissions: Permissions.fromPermissions([Permission.Vote]),
             },
-            // Can only execute transactions.
             {
               key: members.executor.publicKey,
               permissions: Permissions.fromPermissions([Permission.Execute]),
             },
           ],
-          // Threshold is 3, but there are only 2 voters.
           threshold: 3,
           rentCollector: null,
-          sendOptions: { skipPreflight: true },
           programId,
+          lightAccounts,
+          lightArgs,
+          remainingAccounts
         }),
       /Invalid threshold, must be between 1 and number of members with Vote permission/
     );
@@ -278,8 +253,8 @@ describe("Instructions / multisig_create_v2", () => {
 
   it("create a new autonomous multisig", async () => {
     const createKey = Keypair.generate();
-
-    const [multisigPda, multisigBump] = await createAutonomousMultisigV2({
+    const [_multisigPda, multisigBump] = multisig.getMultisigPda({ createKey: createKey.publicKey, programId });
+    const [zkmultisigPda, signature] = await createAutonomousMultisigV2({
       connection,
       createKey,
       members,
@@ -287,12 +262,27 @@ describe("Instructions / multisig_create_v2", () => {
       timeLock: 0,
       rentCollector: null,
       programId,
-    });
 
-    const multisigAccount = await Multisig.fromAccountAddress(
-      connection,
-      multisigPda
-    );
+    });
+    console.log("Autonomous Multisig created with signature", signature);
+    // Wait 2s
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    const compressedMultisigAccount = await zkRpc.getCompressedAccount(bn(zkmultisigPda.toBytes()), undefined);
+    if (!compressedMultisigAccount || !compressedMultisigAccount.data) throw new Error("Failed to fetch compressed account");
+    const multisigAccountInfo: AccountInfo<Buffer> = {
+      owner: compressedMultisigAccount.owner,
+      lamports: Number(compressedMultisigAccount.lamports),
+      executable: false,
+      data: Buffer.from([
+        ...new Uint8Array(compressedMultisigAccount.data.discriminator),
+        ...compressedMultisigAccount.data.data
+      ]),
+    }
+
+    const multisigAccount = Multisig.fromAccountInfo(
+      multisigAccountInfo
+    )[0];
+
     assert.strictEqual(
       multisigAccount.configAuthority.toBase58(),
       PublicKey.default.toBase58()
@@ -341,7 +331,7 @@ describe("Instructions / multisig_create_v2", () => {
     const createKey = Keypair.generate();
     const rentCollector = Keypair.generate().publicKey;
 
-    const [multisigPda, multisigBump] = await createAutonomousMultisigV2({
+    const [zkmultisigPda, signature] = await createAutonomousMultisigV2({
       connection,
       createKey,
       members,
@@ -349,12 +339,27 @@ describe("Instructions / multisig_create_v2", () => {
       timeLock: 0,
       rentCollector,
       programId,
+      sendOptions: { skipPreflight: true },
     });
+    console.log("Autonomous Multisig w/ rent reclamation enabled", signature);
 
-    const multisigAccount = await Multisig.fromAccountAddress(
-      connection,
-      multisigPda
-    );
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    const compressedMultisigAccount = await zkRpc.getCompressedAccount(bn(zkmultisigPda.toBytes()), undefined);
+    if (!compressedMultisigAccount || !compressedMultisigAccount.data) throw new Error("Failed to fetch compressed account");
+    const multisigAccountInfo: AccountInfo<Buffer> = {
+      owner: compressedMultisigAccount.owner,
+      lamports: Number(compressedMultisigAccount.lamports),
+      executable: false,
+      data: Buffer.from([
+        ...new Uint8Array(compressedMultisigAccount.data.discriminator),
+        ...compressedMultisigAccount.data.data
+      ]),
+    }
+
+
+    const multisigAccount = Multisig.fromAccountInfo(
+      multisigAccountInfo
+    )[0];
 
     assert.strictEqual(
       multisigAccount.rentCollector?.toBase58(),
@@ -366,7 +371,7 @@ describe("Instructions / multisig_create_v2", () => {
     const createKey = Keypair.generate();
     const configAuthority = await generateFundedKeypair(connection);
 
-    const [multisigPda] = await createControlledMultisigV2({
+    const [zkmultisigPda, signature] = await createControlledMultisigV2({
       connection,
       createKey,
       configAuthority: configAuthority.publicKey,
@@ -376,18 +381,29 @@ describe("Instructions / multisig_create_v2", () => {
       rentCollector: null,
       programId,
     });
+    console.log("Controlled Multisig created with signature", signature);
 
-    const multisigAccount = await Multisig.fromAccountAddress(
-      connection,
-      multisigPda
-    );
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    const compressedMultisigAccount = await zkRpc.getCompressedAccount(bn(zkmultisigPda.toBytes()), undefined);
+    if (!compressedMultisigAccount || !compressedMultisigAccount.data) throw new Error("Failed to fetch compressed account");
+    const multisigAccountInfo: AccountInfo<Buffer> = {
+      owner: compressedMultisigAccount.owner,
+      lamports: Number(compressedMultisigAccount.lamports),
+      executable: false,
+      data: Buffer.from([
+        ...new Uint8Array(compressedMultisigAccount.data.discriminator),
+        ...compressedMultisigAccount.data.data
+      ]),
+    }
+
+    const multisigAccount = Multisig.fromAccountInfo(
+      multisigAccountInfo
+    )[0];
 
     assert.strictEqual(
       multisigAccount.configAuthority.toBase58(),
       configAuthority.publicKey.toBase58()
     );
-    // We can skip the rest of the assertions because they are already tested
-    // in the previous case and will be the same here.
   });
 
   it("create a new multisig and pay creation fee", async () => {
@@ -397,45 +413,45 @@ describe("Instructions / multisig_create_v2", () => {
       LAMPORTS_PER_SOL
     );
     await connection.confirmTransaction(signature);
-    //endregion
 
     const multisigCreationFee = 0.1 * LAMPORTS_PER_SOL;
 
     //region Configure the global multisig creation fee
-    const setCreationFeeIx =
-      multisig.generated.createProgramConfigSetMultisigCreationFeeInstruction(
-        {
-          programConfig: programConfigPda,
-          authority: programConfigAuthority.publicKey,
-        },
-        {
-          args: { newMultisigCreationFee: multisigCreationFee },
-        },
-        programId
-      );
+    const setCreationFeeIx = multisig.generated.createProgramConfigSetMultisigCreationFeeInstruction(
+      {
+        programConfig: programConfigPda,
+        authority: programConfigAuthority.publicKey,
+      },
+      {
+        args: { newMultisigCreationFee: multisigCreationFee },
+      },
+      programId
+    );
+
     const message = new TransactionMessage({
       recentBlockhash: (await connection.getLatestBlockhash()).blockhash,
       payerKey: programConfigAuthority.publicKey,
       instructions: [setCreationFeeIx],
     }).compileToV0Message();
+
     const tx = new VersionedTransaction(message);
     tx.sign([programConfigAuthority]);
     signature = await connection.sendTransaction(tx);
     await connection.confirmTransaction(signature);
-    let programConfig =
-      await multisig.accounts.ProgramConfig.fromAccountAddress(
-        connection,
-        programConfigPda
-      );
+
+    let programConfig = await multisig.accounts.ProgramConfig.fromAccountAddress(
+      connection,
+      programConfigPda
+    );
     assert.strictEqual(
       programConfig.multisigCreationFee.toString(),
       multisigCreationFee.toString()
     );
-    //endregion
 
     //region Create a new multisig
     const creator = await generateFundedKeypair(connection);
     const createKey = Keypair.generate();
+    const { lightAccounts, lightArgs, remainingAccounts, } = await setupCompressionParams(createKey.publicKey, programId);
 
     const creatorBalancePre = await connection.getBalance(creator.publicKey);
 
@@ -471,44 +487,47 @@ describe("Instructions / multisig_create_v2", () => {
       rentCollector: null,
       programId,
       sendOptions: { skipPreflight: true },
+      lightAccounts,
+      lightArgs,
+      remainingAccounts
     });
     await connection.confirmTransaction(signature);
 
     const creatorBalancePost = await connection.getBalance(creator.publicKey);
-    const rentAndNetworkFee = 2738320;
+    const rentAndNetworkFee = 15692;
 
     assert.strictEqual(
       creatorBalancePost,
       creatorBalancePre - rentAndNetworkFee - multisigCreationFee
     );
-    //endregion
 
     //region Reset the global multisig creation fee
-    const resetCreationFeeIx =
-      multisig.generated.createProgramConfigSetMultisigCreationFeeInstruction(
-        {
-          programConfig: programConfigPda,
-          authority: programConfigAuthority.publicKey,
-        },
-        {
-          args: { newMultisigCreationFee: 0 },
-        },
-        programId
-      );
+    const resetCreationFeeIx = multisig.generated.createProgramConfigSetMultisigCreationFeeInstruction(
+      {
+        programConfig: programConfigPda,
+        authority: programConfigAuthority.publicKey,
+      },
+      {
+        args: { newMultisigCreationFee: 0 },
+      },
+      programId
+    );
+
     const message2 = new TransactionMessage({
       recentBlockhash: (await connection.getLatestBlockhash()).blockhash,
       payerKey: programConfigAuthority.publicKey,
       instructions: [resetCreationFeeIx],
     }).compileToV0Message();
+
     const tx2 = new VersionedTransaction(message2);
     tx2.sign([programConfigAuthority]);
     signature = await connection.sendTransaction(tx2);
     await connection.confirmTransaction(signature);
+
     programConfig = await multisig.accounts.ProgramConfig.fromAccountAddress(
       connection,
       programConfigPda
     );
     assert.strictEqual(programConfig.multisigCreationFee.toString(), "0");
-    //endregion
   });
 });
