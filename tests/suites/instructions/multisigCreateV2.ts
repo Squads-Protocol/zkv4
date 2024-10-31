@@ -62,7 +62,7 @@ describe("Instructions / multisig_create_v2", () => {
       programId,
     });
 
-    const { lightAccounts, lightArgs, remainingAccounts } = await setupCompressionParams(createKey.publicKey, programId);
+    const { lightAccounts, compressionArgs, remainingAccounts } = await setupCompressionParams(createKey.publicKey, programId);
 
     await assert.rejects(
       () =>
@@ -88,7 +88,7 @@ describe("Instructions / multisig_create_v2", () => {
           rentCollector: null,
           programId,
           lightAccounts,
-          lightArgs,
+          compressionArgs,
           remainingAccounts
         }),
       /Found multiple members with the same pubkey/
@@ -103,7 +103,7 @@ describe("Instructions / multisig_create_v2", () => {
       programId,
     });
 
-    const { lightAccounts, lightArgs, remainingAccounts } = await setupCompressionParams(createKey.publicKey, programId);
+    const { lightAccounts, compressionArgs, remainingAccounts } = await setupCompressionParams(createKey.publicKey, programId);
 
     await assert.rejects(
       () =>
@@ -120,7 +120,7 @@ describe("Instructions / multisig_create_v2", () => {
           rentCollector: null,
           programId,
           lightAccounts,
-          lightArgs,
+          compressionArgs,
           remainingAccounts
         }),
       /Members don't include any proposers/
@@ -136,7 +136,7 @@ describe("Instructions / multisig_create_v2", () => {
       programId,
     });
 
-    const { lightAccounts, lightArgs, remainingAccounts } = await setupCompressionParams(createKey.publicKey, programId);
+    const { lightAccounts, compressionArgs, remainingAccounts } = await setupCompressionParams(createKey.publicKey, programId);
 
     await assert.rejects(
       () =>
@@ -160,7 +160,7 @@ describe("Instructions / multisig_create_v2", () => {
           rentCollector: null,
           programId,
           lightAccounts,
-          lightArgs,
+          compressionArgs,
           remainingAccounts
         }),
       /Member has unknown permission/
@@ -175,7 +175,7 @@ describe("Instructions / multisig_create_v2", () => {
       programId,
     });
 
-    const { lightAccounts, lightArgs, remainingAccounts } = await setupCompressionParams(createKey.publicKey, programId);
+    const { lightAccounts, compressionArgs, remainingAccounts } = await setupCompressionParams(createKey.publicKey, programId);
 
     await assert.rejects(
       () =>
@@ -195,7 +195,7 @@ describe("Instructions / multisig_create_v2", () => {
           rentCollector: null,
           programId,
           lightAccounts,
-          lightArgs,
+          compressionArgs,
           remainingAccounts
         }),
       /Invalid threshold, must be between 1 and number of members/
@@ -210,7 +210,7 @@ describe("Instructions / multisig_create_v2", () => {
       programId,
     });
 
-    const { lightAccounts, lightArgs, remainingAccounts } = await setupCompressionParams(createKey.publicKey, programId);
+    const { lightAccounts, compressionArgs, remainingAccounts } = await setupCompressionParams(createKey.publicKey, programId);
 
     await assert.rejects(
       () =>
@@ -244,7 +244,7 @@ describe("Instructions / multisig_create_v2", () => {
           rentCollector: null,
           programId,
           lightAccounts,
-          lightArgs,
+          compressionArgs,
           remainingAccounts
         }),
       /Invalid threshold, must be between 1 and number of members with Vote permission/
@@ -451,7 +451,7 @@ describe("Instructions / multisig_create_v2", () => {
     //region Create a new multisig
     const creator = await generateFundedKeypair(connection);
     const createKey = Keypair.generate();
-    const { lightAccounts, lightArgs, remainingAccounts, } = await setupCompressionParams(createKey.publicKey, programId);
+    const { lightAccounts, compressionArgs, remainingAccounts, } = await setupCompressionParams(createKey.publicKey, programId);
 
     const creatorBalancePre = await connection.getBalance(creator.publicKey);
 
@@ -488,7 +488,7 @@ describe("Instructions / multisig_create_v2", () => {
       programId,
       sendOptions: { skipPreflight: true },
       lightAccounts,
-      lightArgs,
+      compressionArgs,
       remainingAccounts
     });
     await connection.confirmTransaction(signature);

@@ -1,22 +1,47 @@
 use std::cmp::max;
 
+use super::{multisig::*, seeds::*};
+use crate::utils::{new_compressed_account, validate_merkle_trees};
+use crate::MultisigCreateV2;
+use crate::{errors::*, id};
 use anchor_lang::prelude::*;
 use anchor_lang::system_program;
 use light_hasher::bytes::AsByteVec;
-use light_sdk::light_account;
-use light_sdk::LightHasher;
+use light_sdk::address::derive_address_seed;
+use light_sdk::compressed_account::serialize_and_hash_account;
+use light_sdk::merkle_context::{
+    PackedAddressMerkleContext, PackedMerkleOutputContext, RemainingAccounts,
+};
+use light_sdk::proof::CompressedProof;
+use light_sdk::utils::create_cpi_inputs_for_new_account;
+use light_sdk::verify::verify;
+use light_sdk::{light_account, CPI_AUTHORITY_PDA_SEED};
 use light_utils::hash_to_bn254_field_size_be;
 
-use crate::errors::*;
-use crate::id;
+/// Initialization parameters for a compressed multisig account
+#[derive(AnchorSerialize, AnchorDeserialize, Debug, Clone)]
+pub struct InitializeCompressedMultisigArgs {
+    /// Compressed proof for account verification
+    pub compressed_proof: CompressedProof,
 
-pub const MAX_TIME_LOCK: u32 = 3 * 30 * 24 * 60 * 60; // 3 months
+    /// Root index in the address tree
+    pub address_tree_root_index: u16,
 
+    /// Index of the merkle tree account in remaining accounts
+    pub merkle_tree_account_index: u8,
 
+    /// Index of the address tree account in remaining accounts
+    pub address_tree_account_index: u8,
 
-#[account]
-pub struct Multisig {
+    /// Index of the address queue account in remaining accounts
+    pub address_queue_account_index: u8,
+}
+
+#[light_account]
+#[derive(Clone, Debug, Default)]
+pub struct LightMultisig {
     /// Key that is used to seed the multisig PDA.
+    #[truncate]
     pub create_key: Pubkey,
     /// The authority that can change the multisig config.
     /// This is a very important parameter as this authority can change the members and threshold.
@@ -27,6 +52,7 @@ pub struct Multisig {
     ///
     /// However, if this parameter is set to any other key, all the config changes for this multisig
     /// will need to be signed by the `config_authority`. We call such a multisig a "controlled multisig".
+    #[truncate]
     pub config_authority: Pubkey,
     /// Threshold for signatures.
     pub threshold: u16,
@@ -39,14 +65,16 @@ pub struct Multisig {
     pub stale_transaction_index: u64,
     /// The address where the rent for the accounts related to executed, rejected, or cancelled
     /// transactions can be reclaimed. If set to `None`, the rent reclamation feature is turned off.
-    pub rent_collector: Option<Pubkey>,
+    #[truncate]
+    pub rent_collector: OptionPubkey,
     /// Bump for the multisig PDA seed.
     pub bump: u8,
     /// Members of the multisig.
-    pub members: Vec<Member>,
+    #[truncate]
+    pub members: MemberList,
 }
 
-impl Multisig {
+impl LightMultisig {
     pub fn size(members_length: usize) -> usize {
         8  + // anchor account discriminator
         32 + // create_key
@@ -149,32 +177,33 @@ impl Multisig {
             stale_transaction_index,
             ..
         } = self;
+
         // Max number of members is u16::MAX.
         require!(
-            members.len() <= usize::from(u16::MAX),
+            members.0.len() <= usize::from(u16::MAX),
             MultisigError::TooManyMembers
         );
 
         // There must be no duplicate members.
-        let has_duplicates = members.windows(2).any(|win| win[0].key == win[1].key);
+        let has_duplicates = members.0.windows(2).any(|win| win[0].key == win[1].key);
         require!(!has_duplicates, MultisigError::DuplicateMember);
 
         // Members must not have unknown permissions.
         require!(
-            members.iter().all(|m| m.permissions.mask < 8), // 8 = Initiate | Vote | Execute
+            members.0.iter().all(|m| m.permissions.mask < 8), // 8 = Initiate | Vote | Execute
             MultisigError::UnknownPermission
         );
 
         // There must be at least one member with Initiate permission.
-        let num_proposers = Self::num_proposers(members);
+        let num_proposers = Self::num_proposers(&members.0);
         require!(num_proposers > 0, MultisigError::NoProposers);
 
         // There must be at least one member with Execute permission.
-        let num_executors = Self::num_executors(members);
+        let num_executors = Self::num_executors(&members.0);
         require!(num_executors > 0, MultisigError::NoExecutors);
 
         // There must be at least one member with Vote permission.
-        let num_voters = Self::num_voters(members);
+        let num_voters = Self::num_voters(&members.0);
         require!(num_voters > 0, MultisigError::NoVoters);
 
         // Threshold must be greater than 0.
@@ -211,13 +240,14 @@ impl Multisig {
     /// `None` otherwise.
     pub fn is_member(&self, member_pubkey: Pubkey) -> Option<usize> {
         self.members
+            .0
             .binary_search_by_key(&member_pubkey, |m| m.key)
             .ok()
     }
 
     pub fn member_has_permission(&self, member_pubkey: Pubkey, permission: Permission) -> bool {
         match self.is_member(member_pubkey) {
-            Some(index) => self.members[index].permissions.has(permission),
+            Some(index) => self.members.0[index].permissions.has(permission),
             _ => false,
         }
     }
@@ -226,7 +256,7 @@ impl Multisig {
     /// The cutoff must be such that it is impossible for the remaining voters to reach the approval threshold.
     /// For example: total voters = 7, threshold = 3, cutoff = 5.
     pub fn cutoff(&self) -> usize {
-        Self::num_voters(&self.members)
+        Self::num_voters(&self.members.0)
             .checked_sub(usize::from(self.threshold))
             .unwrap()
             .checked_add(1)
@@ -235,8 +265,8 @@ impl Multisig {
 
     /// Add `new_member` to the multisig `members` vec and sort the vec.
     pub fn add_member(&mut self, new_member: Member) {
-        self.members.push(new_member);
-        self.members.sort_by_key(|m| m.key);
+        self.members.0.push(new_member);
+        self.members.0.sort_by_key(|m| m.key);
     }
 
     /// Remove `member_pubkey` from the multisig `members` vec.
@@ -249,58 +279,105 @@ impl Multisig {
             None => return err!(MultisigError::NotAMember),
         };
 
-        self.members.remove(old_member_index);
+        self.members.0.remove(old_member_index);
 
         Ok(())
     }
+
+    pub fn compressed_create<'info>(
+        &self,
+        ctx: &Context<'_, '_, 'info, 'info, MultisigCreateV2<'info>>,
+        args: InitializeCompressedMultisigArgs,
+    ) -> Result<()> {
+        // Validate the passed in merkle trees
+        validate_merkle_trees(
+            args.merkle_tree_account_index,
+            Some(args.address_tree_account_index),
+            Some(args.address_queue_account_index),
+            None,
+            ctx.remaining_accounts,
+        )?;
+
+        // Generate merkle contexts
+        let merkle_output_context = PackedMerkleOutputContext {
+            merkle_tree_pubkey_index: args.merkle_tree_account_index,
+        };
+
+        let address_merkle_context = PackedAddressMerkleContext {
+            address_merkle_tree_pubkey_index: args.address_tree_account_index,
+            address_queue_pubkey_index: args.address_queue_account_index,
+        };
+
+        let multisig_address_seed = derive_address_seed(
+            &[SEED_PREFIX, SEED_MULTISIG, self.create_key.key().as_ref()],
+            &id(),
+        );
+        // Get CPI parameters
+        let (state_output_params, new_address_params) = new_compressed_account(
+            self,
+            &multisig_address_seed,
+            &id(),
+            &merkle_output_context,
+            &address_merkle_context,
+            args.address_tree_root_index,
+            &ctx.remaining_accounts,
+        )?;
+
+        // Create and verify the account
+        let bump = ctx.bumps.cpi_authority;
+        let signer_seeds = [CPI_AUTHORITY_PDA_SEED, &[bump]];
+
+        let cpi_inputs = create_cpi_inputs_for_new_account(
+            args.compressed_proof,
+            new_address_params,
+            state_output_params,
+            None,
+        );
+
+        verify(ctx, &cpi_inputs, &[&signer_seeds])
+    }
 }
 
+/// Stuff for light account serialization
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, Default)]
+pub struct MemberList(pub Vec<Member>);
 
-#[derive(
-    AnchorDeserialize, AnchorSerialize, InitSpace, Eq, PartialEq, Clone, Debug, LightHasher,
-)]
-pub struct Member {
-    #[truncate]
-    pub key: Pubkey,
-    pub permissions: Permissions,
+impl AsByteVec for MemberList {
+    fn as_byte_vec(&self) -> Vec<Vec<u8>> {
+        self.0
+            .iter()
+            .map(|member| {
+                let member_bytes = member.try_to_vec().unwrap();
+                let truncated_member_bytes = hash_to_bn254_field_size_be(&member_bytes.as_slice())
+                    .unwrap()
+                    .0;
+                truncated_member_bytes.to_vec()
+            })
+            .collect()
+    }
 }
 
-#[derive(Clone, Copy)]
-pub enum Permission {
-    Initiate = 1 << 0,
-    Vote = 1 << 1,
-    Execute = 1 << 2,
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct OptionPubkey(pub Option<Pubkey>);
+
+impl Default for OptionPubkey {
+    fn default() -> Self {
+        Self(None)
+    }
 }
 
-/// Bitmask for permissions.
-#[derive(
-    AnchorSerialize,
-    AnchorDeserialize,
-    InitSpace,
-    Eq,
-    PartialEq,
-    Clone,
-    Copy,
-    Default,
-    Debug,
-    LightHasher,
-)]
-pub struct Permissions {
-    pub mask: u8,
-}
-
-impl Permissions {
-    /// Currently unused.
-    pub fn from_vec(permissions: &[Permission]) -> Self {
-        let mut mask = 0;
-        for permission in permissions {
-            mask |= *permission as u8;
+// Implement AsByteVec for TruncatedOptionPubkey
+impl AsByteVec for OptionPubkey {
+    fn as_byte_vec(&self) -> Vec<Vec<u8>> {
+        match &self.0 {
+            Some(pubkey) => {
+                let pubkey_bytes = pubkey.try_to_vec().unwrap();
+                let truncated_pubkey_bytes = hash_to_bn254_field_size_be(&pubkey_bytes.as_slice())
+                    .unwrap()
+                    .0;
+                vec![truncated_pubkey_bytes.to_vec()]
+            }
+            None => vec![vec![0u8; 32]], // or whatever default you want for None case
         }
-        Self { mask }
-    }
-
-    pub fn has(&self, permission: Permission) -> bool {
-        self.mask & (permission as u8) != 0
     }
 }
-

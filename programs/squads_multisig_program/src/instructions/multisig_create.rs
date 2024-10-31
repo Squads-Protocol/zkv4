@@ -1,8 +1,10 @@
-use crate::ParamsMultisigCreateV2;
 use anchor_lang::prelude::*;
 use anchor_lang::system_program;
 
 use light_sdk::compressed_account::LightAccounts;
+use light_sdk::light_system_accounts;
+use light_sdk::LightTraits;
+use light_sdk::CPI_AUTHORITY_PDA_SEED;
 use light_sdk::{
     compressed_account::LightAccount, context::LightContext, light_account, light_accounts,
     merkle_context::PackedAddressMerkleContext,
@@ -35,9 +37,12 @@ pub struct MultisigCreateArgsV2 {
     pub rent_collector: Option<Pubkey>,
     /// Memo is used for indexing only.
     pub memo: Option<String>,
+    /// Parameters for creating the compressed multisig
+    pub compression_args: InitializeCompressedMultisigArgs,
 }
 
-#[light_accounts]
+#[light_system_accounts]
+#[derive(Accounts, LightTraits)]
 pub struct MultisigCreateV2<'info> {
     /// Global program config account.
     #[account(seeds = [SEED_PREFIX, SEED_PROGRAM_CONFIG], bump)]
@@ -47,12 +52,6 @@ pub struct MultisigCreateV2<'info> {
     /// CHECK: validation is performed in the `MultisigCreate::validate()` method.
     #[account(mut)]
     pub treasury: AccountInfo<'info>,
-
-    #[light_account(
-        init,
-        seeds = [SEED_PREFIX, SEED_MULTISIG, create_key.key().as_ref()],
-    )]
-    pub multisig: LightAccount<LightMultisig>,
 
     /// An ephemeral signer that is used as a seed for the Multisig PDA.
     /// Must be a signer to prevent front-running attack by someone else but the original creator.
@@ -65,6 +64,7 @@ pub struct MultisigCreateV2<'info> {
 
     /// CHECK: Checked in light-system-program.
     #[authority]
+    #[account(seeds = [CPI_AUTHORITY_PDA_SEED], bump)]
     pub cpi_authority: AccountInfo<'info>,
     #[self_program]
     pub squads_program: Program<'info, crate::program::SquadsMultisigProgram>,
@@ -85,10 +85,7 @@ impl<'info> MultisigCreateV2<'info> {
 
     /// Creates a multisig.
     #[access_control(ctx.accounts.validate())]
-    pub fn multisig_create(
-        ctx: &mut LightContext<Self, LightMultisigCreateV2>,
-        args: MultisigCreateArgsV2,
-    ) -> Result<()> {
+    pub fn multisig_create(ctx: Context<'_, '_, 'info, 'info, Self>, args: MultisigCreateArgsV2) -> Result<()> {
         // Sort the members by pubkey.
         let mut members = args.members;
         members.sort_by_key(|m| m.key);
@@ -100,18 +97,19 @@ impl<'info> MultisigCreateV2<'info> {
             &crate::id(),
         )
         .1;
+        let multisig = LightMultisig {
+            create_key: create_key.key(),
+            config_authority: args.config_authority.unwrap_or_default(),
+            threshold: args.threshold,
+            time_lock: args.time_lock,
+            transaction_index: 0,
+            stale_transaction_index: 0,
+            bump: multisig_bump,
+            members: MemberList(members),
+            rent_collector: OptionPubkey(args.rent_collector),
+        };
 
-        ctx.light_accounts.multisig.config_authority = args.config_authority.unwrap_or_default();
-        ctx.light_accounts.multisig.threshold = args.threshold;
-        ctx.light_accounts.multisig.time_lock = args.time_lock;
-        ctx.light_accounts.multisig.transaction_index = 0;
-        ctx.light_accounts.multisig.stale_transaction_index = 0;
-        ctx.light_accounts.multisig.create_key = ctx.accounts.create_key.key();
-        ctx.light_accounts.multisig.bump = multisig_bump;
-        ctx.light_accounts.multisig.members = MemberList(members);
-        ctx.light_accounts.multisig.rent_collector = OptionPubkey(args.rent_collector);
-
-        ctx.light_accounts.multisig.invariant()?;
+        multisig.invariant()?;
 
         let creation_fee = ctx.accounts.program_config.multisig_creation_fee;
 
@@ -129,6 +127,7 @@ impl<'info> MultisigCreateV2<'info> {
             msg!("Creation fee: {}", creation_fee / LAMPORTS_PER_SOL);
         }
 
+        multisig.compressed_create(&ctx, args.compression_args)?;
         Ok(())
     }
 }

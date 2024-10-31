@@ -39,8 +39,8 @@ export const vaultTransactionCreateStruct = new beet.FixableBeetArgsStruct<
 /**
  * Accounts required by the _vaultTransactionCreate_ instruction
  *
- * @property [_writable_] multisig
- * @property [_writable_] transaction
+ * @property [] multisig
+ * @property [_writable_, **signer**] transaction
  * @property [**signer**] creator
  * @property [_writable_, **signer**] rentPayer
  * @category Instructions
@@ -82,13 +82,13 @@ export function createVaultTransactionCreateInstruction(
   const keys: web3.AccountMeta[] = [
     {
       pubkey: accounts.multisig,
-      isWritable: true,
+      isWritable: false,
       isSigner: false,
     },
     {
       pubkey: accounts.transaction,
       isWritable: true,
-      isSigner: false,
+      isSigner: true,
     },
     {
       pubkey: accounts.creator,

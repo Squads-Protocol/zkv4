@@ -9,6 +9,10 @@ import * as web3 from '@solana/web3.js'
 import * as beet from '@metaplex-foundation/beet'
 import * as beetSolana from '@metaplex-foundation/beet-solana'
 import { Member, memberBeet } from './Member'
+import {
+  InitializeCompressedMultisigArgs,
+  initializeCompressedMultisigArgsBeet,
+} from './InitializeCompressedMultisigArgs'
 export type MultisigCreateArgsV2 = {
   configAuthority: beet.COption<web3.PublicKey>
   threshold: number
@@ -16,6 +20,7 @@ export type MultisigCreateArgsV2 = {
   timeLock: number
   rentCollector: beet.COption<web3.PublicKey>
   memo: beet.COption<string>
+  compressionArgs: InitializeCompressedMultisigArgs
 }
 
 /**
@@ -31,6 +36,7 @@ export const multisigCreateArgsV2Beet =
       ['timeLock', beet.u32],
       ['rentCollector', beet.coption(beetSolana.publicKey)],
       ['memo', beet.coption(beet.utf8String)],
+      ['compressionArgs', initializeCompressedMultisigArgsBeet],
     ],
     'MultisigCreateArgsV2'
   )

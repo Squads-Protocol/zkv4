@@ -1,4 +1,5 @@
 pub use self::multisig::*;
+pub use self::compressed_multisig::*;
 pub use batch::*;
 pub use config_transaction::*;
 pub use program_config::*;
@@ -11,6 +12,7 @@ pub use vault_transaction::*;
 mod batch;
 mod config_transaction;
 mod multisig;
+mod compressed_multisig;
 mod program_config;
 mod proposal;
 mod seeds;

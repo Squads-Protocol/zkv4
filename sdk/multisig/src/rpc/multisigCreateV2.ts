@@ -7,8 +7,8 @@ import {
   TransactionSignature,
 } from "@solana/web3.js";
 import { translateAndThrowAnchorError } from "../errors";
-import { Member } from "../generated";
-import { LightArgs, LightSpecificAccounts } from "../instructions";
+import { InitializeCompressedMultisigArgs, Member } from "../generated";
+import { LightSpecificAccounts } from "../instructions";
 import * as transactions from "../transactions";
 
 /** Creates a new multisig. */
@@ -27,7 +27,7 @@ export async function multisigCreateV2({
   sendOptions,
   programId,
   lightAccounts,
-  lightArgs,
+  compressionArgs,
   remainingAccounts
 }: {
   connection: Connection;
@@ -41,7 +41,7 @@ export async function multisigCreateV2({
   timeLock: number;
   rentCollector: PublicKey | null;
   lightAccounts: LightSpecificAccounts,
-  lightArgs: LightArgs
+  compressionArgs: InitializeCompressedMultisigArgs
   memo?: string;
   sendOptions?: SendOptions;
   programId?: PublicKey;
@@ -63,7 +63,7 @@ export async function multisigCreateV2({
     memo,
     programId,
     lightAccounts,
-    lightArgs,
+    compressionArgs,
     remainingAccounts
   });
 

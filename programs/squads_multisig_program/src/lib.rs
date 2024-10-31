@@ -39,7 +39,6 @@ declare_id!("SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf");
 #[cfg(feature = "testing")]
 declare_id!("GyhGAqjokLwF9UXdQ2dR5Zwiup242j4mX4J1tSMKyAmD");
 
-#[light_program]
 #[program]
 pub mod squads_multisig_program {
     use anchor_lang::system_program;
@@ -88,49 +87,11 @@ pub mod squads_multisig_program {
 
     /// Create a multisig.
     pub fn multisig_create_v2<'info>(
-        ctx: LightContext<'_, '_, '_, 'info, MultisigCreateV2<'info>>,
+        ctx: Context<'_, '_, 'info, 'info, MultisigCreateV2<'info>>,
         args: MultisigCreateArgsV2,
     ) -> Result<()> {
-        let result = MultisigCreateV2::multisig_create(&mut ctx, args);
+        let result = MultisigCreateV2::multisig_create(ctx, args);
         result
-        // ctx.accounts.validate()?;
-        // // Sort the members by pubkey.
-        // let mut members = args.members;
-        // members.sort_by_key(|m| m.key);
-
-        // // Initialize the multisig.
-        // let create_key = &ctx.accounts.create_key;
-        // let multisig_bump = Pubkey::find_program_address(&[SEED_PREFIX, SEED_MULTISIG, create_key.key().as_ref()], &crate::id()).1;
-
-        // ctx.light_accounts.multisig.config_authority = args.config_authority.unwrap_or_default();
-        // ctx.light_accounts.multisig.threshold = args.threshold;
-        // ctx.light_accounts.multisig.time_lock = args.time_lock;
-        // ctx.light_accounts.multisig.transaction_index = 0;
-        // ctx.light_accounts.multisig.stale_transaction_index = 0;
-        // ctx.light_accounts.multisig.create_key = ctx.accounts.create_key.key();
-        // ctx.light_accounts.multisig.bump = multisig_bump;
-        // ctx.light_accounts.multisig.members = MemberList(members);
-        // ctx.light_accounts.multisig.rent_collector = OptionPubkey(args.rent_collector);
-
-        // ctx.light_accounts.multisig.invariant()?;
-
-        // let creation_fee = ctx.accounts.program_config.multisig_creation_fee;
-
-        // if creation_fee > 0 {
-        //     system_program::transfer(
-        //         CpiContext::new(
-        //             ctx.accounts.system_program.to_account_info(),
-        //             system_program::Transfer {
-        //                 from: ctx.accounts.creator.to_account_info(),
-        //                 to: ctx.accounts.treasury.to_account_info(),
-        //             },
-        //         ),
-        //         creation_fee,
-        //     )?;
-        //     msg!("Creation fee: {}", creation_fee / LAMPORTS_PER_SOL);
-        // }
-
-        // Ok(())
     }
 
     /// Add a new member to the controlled multisig.
@@ -214,11 +175,12 @@ pub mod squads_multisig_program {
     }
 
     /// Create a new vault transaction.
-    pub fn vault_transaction_create(
-        ctx: Context<VaultTransactionCreate>,
+    pub fn vault_transaction_create<'info>(
+        ctx: Context<'_, '_, '_, 'info, VaultTransactionCreate<'info>>,
         args: VaultTransactionCreateArgs,
     ) -> Result<()> {
-        VaultTransactionCreate::vault_transaction_create(ctx, args)
+        let result = VaultTransactionCreate::vault_transaction_create(ctx, args);
+        result
     }
 
     /// Create a transaction buffer account.

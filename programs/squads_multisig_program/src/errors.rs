@@ -92,4 +92,8 @@ pub enum MultisigError {
     FinalBufferSizeMismatch,
     #[msg("multisig_create has been deprecated. Use multisig_create_v2 instead.")]
     MultisigCreateDeprecated,
+
+    /// Account compression related errors
+    #[msg("Invalid Merkle Address")]
+    InvalidMerkleAddress,
 }

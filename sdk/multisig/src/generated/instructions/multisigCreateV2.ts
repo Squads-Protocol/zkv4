@@ -7,15 +7,6 @@
 
 import * as beet from '@metaplex-foundation/beet'
 import * as web3 from '@solana/web3.js'
-import { CompressedProof, compressedProofBeet } from '../types/CompressedProof'
-import {
-  PackedMerkleContext,
-  packedMerkleContextBeet,
-} from '../types/PackedMerkleContext'
-import {
-  PackedAddressMerkleContext,
-  packedAddressMerkleContextBeet,
-} from '../types/PackedAddressMerkleContext'
 import {
   MultisigCreateArgsV2,
   multisigCreateArgsV2Beet,
@@ -27,12 +18,6 @@ import {
  * @category generated
  */
 export type MultisigCreateV2InstructionArgs = {
-  inputs: Uint8Array[]
-  proof: CompressedProof
-  merkleContext: PackedMerkleContext
-  merkleTreeRootIndex: number
-  addressMerkleContext: PackedAddressMerkleContext
-  addressMerkleTreeRootIndex: number
   args: MultisigCreateArgsV2
 }
 /**
@@ -47,12 +32,6 @@ export const multisigCreateV2Struct = new beet.FixableBeetArgsStruct<
 >(
   [
     ['instructionDiscriminator', beet.uniformFixedSizeArray(beet.u8, 8)],
-    ['inputs', beet.array(beet.bytes)],
-    ['proof', compressedProofBeet],
-    ['merkleContext', packedMerkleContextBeet],
-    ['merkleTreeRootIndex', beet.u16],
-    ['addressMerkleContext', packedAddressMerkleContextBeet],
-    ['addressMerkleTreeRootIndex', beet.u16],
     ['args', multisigCreateArgsV2Beet],
   ],
   'MultisigCreateV2InstructionArgs'

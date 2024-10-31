@@ -16,7 +16,7 @@ pub struct VaultTransactionCreateFromBuffer<'info> {
         constraint = transaction_buffer.creator == creator.key() @ MultisigError::Unauthorized,
         seeds = [
             SEED_PREFIX,
-            vault_transaction_create.multisig.key().as_ref(),
+            //vault_transaction_create.multisig.key().as_ref(),
             SEED_TRANSACTION_BUFFER,
             creator.key().as_ref(),
             &transaction_buffer.buffer_index.to_le_bytes(),

@@ -6,9 +6,9 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
-import { Member } from "../generated";
+import { InitializeCompressedMultisigArgs, Member } from "../generated";
 import * as instructions from "../instructions";
-import { LightArgs, LightSpecificAccounts } from "../instructions";
+import {LightSpecificAccounts } from "../instructions";
 
 /**
  * Returns unsigned `VersionedTransaction` that needs to be signed by `creator` and `createKey` before sending it.
@@ -27,7 +27,7 @@ export function multisigCreateV2({
   memo,
   programId,
   lightAccounts,
-  lightArgs,
+  compressionArgs,
   remainingAccounts
 }: {
   blockhash: string;
@@ -41,7 +41,7 @@ export function multisigCreateV2({
   timeLock: number;
   rentCollector: PublicKey | null;
   lightAccounts: LightSpecificAccounts;
-  lightArgs: LightArgs;
+  compressionArgs: InitializeCompressedMultisigArgs;
   memo?: string;
     programId?: PublicKey;
   remainingAccounts?: AccountMeta[];
@@ -58,7 +58,7 @@ export function multisigCreateV2({
     rentCollector,
     memo,
     programId,
-    lightArgs,
+    compressionArgs,
     lightSpecificAccounts: lightAccounts,
     remainingAccounts
   });

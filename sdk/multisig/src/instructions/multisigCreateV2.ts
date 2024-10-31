@@ -1,8 +1,8 @@
 import { AccountMeta, PublicKey, TransactionInstruction } from "@solana/web3.js";
 import {
   createMultisigCreateV2Instruction,
+  InitializeCompressedMultisigArgs,
   Member,
-  PackedAddressMerkleContext,
   PROGRAM_ID,
 } from "../generated";
 import { getProgramConfigPda } from "../pda";
@@ -17,15 +17,6 @@ export interface LightSpecificAccounts {
   noopProgram: PublicKey;
 }
 
-export interface LightArgs {
-  inputs: Uint8Array[];
-  proof: CompressedProof;
-  merkleContext: PackedMerkleContext;
-  merkleTreeRootIndex: number;
-  addressMerkleContext: PackedAddressMerkleContext;
-  addressMerkleTreeRootIndex: number;
-}
-
 
 export function multisigCreateV2({
   treasury,
@@ -38,7 +29,7 @@ export function multisigCreateV2({
   createKey,
   rentCollector,
   lightSpecificAccounts,
-  lightArgs,
+  compressionArgs,
   memo,
   programId = PROGRAM_ID,
   remainingAccounts,
@@ -53,7 +44,7 @@ export function multisigCreateV2({
   createKey: PublicKey;
   rentCollector: PublicKey | null;
   lightSpecificAccounts: LightSpecificAccounts
-  lightArgs: LightArgs
+  compressionArgs: InitializeCompressedMultisigArgs
   memo?: string;
   programId?: PublicKey;
   remainingAccounts?: AccountMeta[];
@@ -76,12 +67,6 @@ export function multisigCreateV2({
       anchorRemainingAccounts: remainingAccounts,
     },
     {
-      inputs: lightArgs.inputs,
-      proof: lightArgs.proof,
-      merkleContext: lightArgs.merkleContext,
-      merkleTreeRootIndex: lightArgs.merkleTreeRootIndex,
-      addressMerkleContext: lightArgs.addressMerkleContext,
-      addressMerkleTreeRootIndex: lightArgs.addressMerkleTreeRootIndex,
       args: {
         configAuthority,
         threshold,
@@ -89,6 +74,7 @@ export function multisigCreateV2({
         timeLock,
         rentCollector,
         memo: memo ?? null,
+        compressionArgs
       },
     },
     programId

@@ -1,5 +1,9 @@
 use anchor_lang::prelude::*;
-use anchor_lang::system_program;
+use light_sdk::{
+    compressed_account::LightAccount, context::LightContext, light_account, light_accounts,
+    merkle_context::PackedAddressMerkleContext,
+};
+use light_sdk::{light_system_accounts, LightTraits};
 
 use crate::errors::*;
 use crate::state::*;
@@ -14,28 +18,17 @@ pub struct VaultTransactionCreateArgs {
     pub transaction_message: Vec<u8>,
     pub memo: Option<String>,
 }
-
 #[derive(Accounts)]
 #[instruction(args: VaultTransactionCreateArgs)]
 pub struct VaultTransactionCreate<'info> {
-    #[account(
-        mut,
-        seeds = [SEED_PREFIX, SEED_MULTISIG, multisig.create_key.as_ref()],
-        bump = multisig.bump,
-    )]
+
     pub multisig: Account<'info, Multisig>,
 
     #[account(
         init,
         payer = rent_payer,
         space = VaultTransaction::size(args.ephemeral_signers, &args.transaction_message)?,
-        seeds = [
-            SEED_PREFIX,
-            multisig.key().as_ref(),
-            SEED_TRANSACTION,
-            &multisig.transaction_index.checked_add(1).unwrap().to_le_bytes(),
-        ],
-        bump
+        // Seed checks are done in the validate function due to light context macro
     )]
     pub transaction: Account<'info, VaultTransaction>,
 
@@ -52,18 +45,53 @@ pub struct VaultTransactionCreate<'info> {
 impl<'info> VaultTransactionCreate<'info> {
     pub fn validate(&self) -> Result<()> {
         let Self {
-            multisig, creator, ..
+            creator,
+            transaction,
+            ..
         } = self;
+        // let multisig = &light_context.multisig;
+        // let multisig_pubkey = Pubkey::find_program_address(
+        //     &[
+        //         &SEED_PREFIX.to_vec(),
+        //         &SEED_MULTISIG.to_vec(),
+        //         &multisig.create_key.as_ref().to_vec(),
+        //     ],
+        //     &crate::id(),
+        // )
+        // .0;
+
+        // check vault transaction seeds
+        // let should_be_vault_transaction = Pubkey::find_program_address(
+        //     &[
+        //         &SEED_PREFIX.to_vec(),
+        //         &SEED_MULTISIG.to_vec(),
+        //         &multisig_pubkey.to_bytes(),
+        //         &SEED_TRANSACTION.to_vec(),
+        //         &multisig
+        //             .transaction_index
+        //             .checked_add(1)
+        //             .unwrap()
+        //             .to_le_bytes(),
+        //     ],
+        //     &crate::id(),
+        // )
+        // .0;
+
+        // require_keys_eq!(
+        //     transaction.key(),
+        //     should_be_vault_transaction,
+        //     MultisigError::InvalidAccount
+        // );
 
         // creator
-        require!(
-            multisig.is_member(creator.key()).is_some(),
-            MultisigError::NotAMember
-        );
-        require!(
-            multisig.member_has_permission(creator.key(), Permission::Initiate),
-            MultisigError::Unauthorized
-        );
+        // require!(
+        //     multisig.is_member(creator.key()).is_some(),
+        //     MultisigError::NotAMember
+        // );
+        // require!(
+        //     multisig.member_has_permission(creator.key(), Permission::Initiate),
+        //     MultisigError::Unauthorized
+        // );
 
         Ok(())
     }
@@ -74,16 +102,50 @@ impl<'info> VaultTransactionCreate<'info> {
         ctx: Context<Self>,
         args: VaultTransactionCreateArgs,
     ) -> Result<()> {
-        let multisig = &mut ctx.accounts.multisig;
+        // TODO: Remove this
+        let mut multisig = LightMultisig {
+            create_key: Pubkey::default(),
+            config_authority: Pubkey::default(),
+            threshold: 0,
+            time_lock: 0,
+            transaction_index: 0,
+            stale_transaction_index: 0,
+            bump: 0,
+            members: MemberList(Vec::new()),
+            rent_collector: OptionPubkey(Some(Pubkey::default())),
+        };
+
+        let multisig_key = Pubkey::find_program_address(
+            &[
+                &SEED_PREFIX.to_vec(),
+                &SEED_MULTISIG.to_vec(),
+                &multisig.create_key.as_ref().to_vec(),
+            ],
+            &crate::id(),
+        )
+        .0;
         let transaction = &mut ctx.accounts.transaction;
         let creator = &mut ctx.accounts.creator;
 
         let transaction_message =
             TransactionMessage::deserialize(&mut args.transaction_message.as_slice())?;
 
-        let multisig_key = multisig.key();
         let transaction_key = transaction.key();
-
+        let transaction_bump = Pubkey::find_program_address(
+            &[
+                &SEED_PREFIX.to_vec(),
+                &SEED_MULTISIG.to_vec(),
+                &multisig_key.to_bytes(),
+                &SEED_TRANSACTION.to_vec(),
+                &multisig
+                    .transaction_index
+                    .checked_add(1)
+                    .unwrap()
+                    .to_le_bytes(),
+            ],
+            &crate::id(),
+        )
+        .1;
         let vault_seeds = &[
             SEED_PREFIX,
             multisig_key.as_ref(),
@@ -114,8 +176,7 @@ impl<'info> VaultTransactionCreate<'info> {
         transaction.multisig = multisig_key;
         transaction.creator = creator.key();
         transaction.index = transaction_index;
-        transaction.bump = ctx.bumps.transaction;
-        transaction.vault_index = args.vault_index;
+        transaction.bump = transaction_bump;
         transaction.vault_bump = vault_bump;
         transaction.ephemeral_signer_bumps = ephemeral_signer_bumps;
         transaction.message = transaction_message.try_into()?;

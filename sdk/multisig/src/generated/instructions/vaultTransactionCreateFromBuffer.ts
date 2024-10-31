@@ -40,8 +40,8 @@ export const vaultTransactionCreateFromBufferStruct =
 /**
  * Accounts required by the _vaultTransactionCreateFromBuffer_ instruction
  *
- * @property [_writable_] vaultTransactionCreateItemMultisig
- * @property [_writable_] vaultTransactionCreateItemTransaction
+ * @property [] vaultTransactionCreateItemMultisig
+ * @property [_writable_, **signer**] vaultTransactionCreateItemTransaction
  * @property [**signer**] vaultTransactionCreateItemCreator
  * @property [_writable_, **signer**] vaultTransactionCreateItemRentPayer
  * @property [] vaultTransactionCreateItemSystemProgram
@@ -89,13 +89,13 @@ export function createVaultTransactionCreateFromBufferInstruction(
   const keys: web3.AccountMeta[] = [
     {
       pubkey: accounts.vaultTransactionCreateItemMultisig,
-      isWritable: true,
+      isWritable: false,
       isSigner: false,
     },
     {
       pubkey: accounts.vaultTransactionCreateItemTransaction,
       isWritable: true,
-      isSigner: false,
+      isSigner: true,
     },
     {
       pubkey: accounts.vaultTransactionCreateItemCreator,

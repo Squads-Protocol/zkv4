@@ -1039,6 +1039,29 @@ createErrorFromNameLookup.set(
 )
 
 /**
+ * InvalidMerkleAddress: 'Invalid Merkle Address'
+ *
+ * @category Errors
+ * @category generated
+ */
+export class InvalidMerkleAddressError extends Error {
+  readonly code: number = 0x179d
+  readonly name: string = 'InvalidMerkleAddress'
+  constructor() {
+    super('Invalid Merkle Address')
+    if (typeof Error.captureStackTrace === 'function') {
+      Error.captureStackTrace(this, InvalidMerkleAddressError)
+    }
+  }
+}
+
+createErrorFromCodeLookup.set(0x179d, () => new InvalidMerkleAddressError())
+createErrorFromNameLookup.set(
+  'InvalidMerkleAddress',
+  () => new InvalidMerkleAddressError()
+)
+
+/**
  * Attempts to resolve a custom program error from the provided error code.
  * @category Errors
  * @category generated
