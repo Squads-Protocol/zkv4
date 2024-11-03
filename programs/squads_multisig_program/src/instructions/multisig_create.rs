@@ -57,6 +57,12 @@ pub struct MultisigCreateV2<'info> {
     /// Must be a signer to prevent front-running attack by someone else but the original creator.
     pub create_key: Signer<'info>,
 
+    /// The multisig account that will be created in compressed form.
+    #[account(
+        seeds = [SEED_PREFIX, SEED_MULTISIG, create_key.key().as_ref()],
+        bump
+    )]
+    pub multisig: AccountInfo<'info>,
     /// The creator of the multisig.
     #[fee_payer]
     #[account(mut)]
@@ -85,18 +91,16 @@ impl<'info> MultisigCreateV2<'info> {
 
     /// Creates a multisig.
     #[access_control(ctx.accounts.validate())]
-    pub fn multisig_create(ctx: Context<'_, '_, 'info, 'info, Self>, args: MultisigCreateArgsV2) -> Result<()> {
+    pub fn multisig_create(
+        ctx: Context<'_, '_, 'info, 'info, Self>,
+        args: MultisigCreateArgsV2,
+    ) -> Result<()> {
         // Sort the members by pubkey.
         let mut members = args.members;
         members.sort_by_key(|m| m.key);
 
         // Initialize the multisig.
         let create_key = &ctx.accounts.create_key;
-        let multisig_bump = Pubkey::find_program_address(
-            &[SEED_PREFIX, SEED_MULTISIG, create_key.key().as_ref()],
-            &crate::id(),
-        )
-        .1;
         let multisig = LightMultisig {
             create_key: create_key.key(),
             config_authority: args.config_authority.unwrap_or_default(),
@@ -104,7 +108,7 @@ impl<'info> MultisigCreateV2<'info> {
             time_lock: args.time_lock,
             transaction_index: 0,
             stale_transaction_index: 0,
-            bump: multisig_bump,
+            bump: ctx.bumps.multisig,
             members: MemberList(members),
             rent_collector: OptionPubkey(args.rent_collector),
         };

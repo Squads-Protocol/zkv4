@@ -42,6 +42,7 @@ export const multisigCreateV2Struct = new beet.FixableBeetArgsStruct<
  * @property [] programConfig
  * @property [_writable_] treasury
  * @property [**signer**] createKey
+ * @property [] multisig
  * @property [_writable_, **signer**] creator
  * @property [] cpiAuthority
  * @property [] squadsProgram
@@ -58,6 +59,7 @@ export type MultisigCreateV2InstructionAccounts = {
   programConfig: web3.PublicKey
   treasury: web3.PublicKey
   createKey: web3.PublicKey
+  multisig: web3.PublicKey
   creator: web3.PublicKey
   cpiAuthority: web3.PublicKey
   squadsProgram: web3.PublicKey
@@ -108,6 +110,11 @@ export function createMultisigCreateV2Instruction(
       pubkey: accounts.createKey,
       isWritable: false,
       isSigner: true,
+    },
+    {
+      pubkey: accounts.multisig,
+      isWritable: false,
+      isSigner: false,
     },
     {
       pubkey: accounts.creator,

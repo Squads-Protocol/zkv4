@@ -1,12 +1,15 @@
+import { defaultStaticAccountsStruct, LightSystemProgram } from "@lightprotocol/stateless.js";
 import {
-  createVaultTransactionCreateInstruction,
-  PROGRAM_ID,
-} from "../generated";
-import {
+  AccountMeta,
   AddressLookupTableAccount,
   PublicKey,
-  TransactionMessage,
+  TransactionMessage
 } from "@solana/web3.js";
+import {
+  createVaultTransactionCreateInstruction,
+  MutateCompressedMultisigArgs,
+  PROGRAM_ID,
+} from "../generated";
 import { getTransactionPda, getVaultPda } from "../pda";
 import { transactionMessageToMultisigTransactionMessageBytes } from "../utils";
 
@@ -19,6 +22,8 @@ export function vaultTransactionCreate({
   ephemeralSigners,
   transactionMessage,
   addressLookupTableAccounts,
+  compressionArgs,
+  remainingAccounts,
   memo,
   programId = PROGRAM_ID,
 }: {
@@ -33,6 +38,9 @@ export function vaultTransactionCreate({
   transactionMessage: TransactionMessage;
   /** `AddressLookupTableAccount`s referenced in `transaction_message`. */
   addressLookupTableAccounts?: AddressLookupTableAccount[];
+  /** Data and proof required for the compressed multisig account. */
+  compressionArgs: MutateCompressedMultisigArgs;
+  remainingAccounts: AccountMeta[];
   memo?: string;
   programId?: PublicKey;
 }) {
@@ -54,13 +62,34 @@ export function vaultTransactionCreate({
       addressLookupTableAccounts,
       vaultPda,
     });
+  // Defualt static accounts from Light Protocol
+  const {
+    registeredProgramPda,
+    noopProgram,
+    accountCompressionProgram,
+    accountCompressionAuthority,
+  } = defaultStaticAccountsStruct();
 
+  const cpiAuthority = PublicKey.findProgramAddressSync(
+    [
+      Buffer.from("cpi_authority"),
+    ],
+    programId
+  )[0];
   return createVaultTransactionCreateInstruction(
     {
       multisig: multisigPda,
       transaction: transactionPda,
       creator,
       rentPayer: rentPayer ?? creator,
+      lightSystemProgram: LightSystemProgram.programId,
+      noopProgram,
+      registeredProgramPda,
+      accountCompressionProgram,
+      accountCompressionAuthority,
+      cpiAuthority,
+      squadsProgram: programId,
+      anchorRemainingAccounts: remainingAccounts,
     },
     {
       args: {
@@ -68,6 +97,7 @@ export function vaultTransactionCreate({
         ephemeralSigners,
         transactionMessage: transactionMessageBytes,
         memo: memo ?? null,
+        compressionArgs,
       },
     },
     programId

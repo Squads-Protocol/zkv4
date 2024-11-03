@@ -163,9 +163,10 @@ export async function setupCompressionParams(createKey: PublicKey, programId: Pu
   const stateQueue = defaultTestStateTreeAccounts()?.nullifierQueue;
   const addressTree = defaultTestStateTreeAccounts()?.addressTree;
   const addressQueue = defaultTestStateTreeAccounts()?.addressQueue;
+  const multisigPda = multisig.getMultisigPda({ createKey: createKey, programId })[0];
 
   const zkMultisigSeeds = deriveAddressSeed(
-    [Buffer.from("multisig"), Buffer.from("multisig"), createKey.toBytes()],
+    [multisigPda.toBytes()],
     programId
   );
   const zkMultisigAddress = deriveAddress(zkMultisigSeeds, addressTree);
@@ -254,8 +255,8 @@ export async function createAutonomousMultisigV2({
   );
   const programTreasury = programConfig.treasury;
 
-  const { multisigPda, lightAccounts, compressionArgs, remainingAccounts } = await setupCompressionParams(createKey.publicKey, programId);
-
+  const { multisigPda: compressedMultisigPda, lightAccounts, compressionArgs, remainingAccounts } = await setupCompressionParams(createKey.publicKey, programId);
+  const multisigPda = multisig.getMultisigPda({ createKey: createKey.publicKey, programId })[0];
   const signature = await multisig.rpc.multisigCreateV2({
     connection,
     treasury: programTreasury,
@@ -290,7 +291,7 @@ export async function createAutonomousMultisigV2({
 
   await connection.confirmTransaction(signature);
 
-  return [multisigPda, signature] as const;
+  return [compressedMultisigPda, signature] as const;
 }
 
 export async function createControlledMultisig({

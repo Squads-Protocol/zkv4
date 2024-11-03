@@ -1,9 +1,12 @@
 import {
+  AccountMeta,
   AddressLookupTableAccount,
+  ComputeBudgetProgram,
   PublicKey,
   TransactionMessage,
-  VersionedTransaction,
+  VersionedTransaction
 } from "@solana/web3.js";
+import { MutateCompressedMultisigArgs } from "../generated/types/MutateCompressedMultisigArgs";
 import * as instructions from "../instructions/index";
 
 /**
@@ -23,6 +26,8 @@ export function vaultTransactionCreate({
   addressLookupTableAccounts,
   memo,
   programId,
+  compressionArgs,
+  remainingAccounts
 }: {
   blockhash: string;
   feePayer: PublicKey;
@@ -39,13 +44,22 @@ export function vaultTransactionCreate({
   transactionMessage: TransactionMessage;
   /** `AddressLookupTableAccount`s referenced in `transaction_message`. */
   addressLookupTableAccounts?: AddressLookupTableAccount[];
+  /** Compression related arguments for the compressed multisig account. */
+  compressionArgs: MutateCompressedMultisigArgs;
+  /** Remaining accounts used for compression */
+  remainingAccounts: AccountMeta[];
   memo?: string;
   programId?: PublicKey;
 }): VersionedTransaction {
+  const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+    units: 500_000,
+  });
+
   const message = new TransactionMessage({
     payerKey: feePayer,
     recentBlockhash: blockhash,
     instructions: [
+      computeBudgetIx,
       instructions.vaultTransactionCreate({
         multisigPda,
         transactionIndex,
@@ -57,6 +71,9 @@ export function vaultTransactionCreate({
         addressLookupTableAccounts,
         memo,
         programId,
+        compressionArgs,
+        remainingAccounts
+
       }),
     ],
   }).compileToV0Message();

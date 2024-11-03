@@ -17,11 +17,13 @@ import {
   getTestProgramId,
   TestMembers,
 } from "../../utils";
+import { createRpc } from "@lightprotocol/stateless.js";
 
 const { Multisig, Proposal } = multisig.accounts;
 
 const programId = getTestProgramId();
 const connection = createLocalhostConnection();
+const zkRpc = createRpc(connection)
 
 describe("Instructions / vault_transaction_accounts_close", () => {
   let members: TestMembers;

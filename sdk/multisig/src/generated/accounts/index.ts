@@ -1,5 +1,6 @@
 export * from './Batch'
 export * from './ConfigTransaction'
+export * from './LightMultisig'
 export * from './Multisig'
 export * from './ProgramConfig'
 export * from './Proposal'
@@ -17,6 +18,7 @@ import { Proposal } from './Proposal'
 import { SpendingLimit } from './SpendingLimit'
 import { TransactionBuffer } from './TransactionBuffer'
 import { VaultTransaction } from './VaultTransaction'
+import { LightMultisig } from './LightMultisig'
 
 export const accountProviders = {
   Batch,
@@ -28,4 +30,5 @@ export const accountProviders = {
   SpendingLimit,
   TransactionBuffer,
   VaultTransaction,
+  LightMultisig,
 }

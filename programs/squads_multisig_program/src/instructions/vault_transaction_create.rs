@@ -3,7 +3,7 @@ use light_sdk::{
     compressed_account::LightAccount, context::LightContext, light_account, light_accounts,
     merkle_context::PackedAddressMerkleContext,
 };
-use light_sdk::{light_system_accounts, LightTraits};
+use light_sdk::{light_system_accounts, LightTraits, CPI_AUTHORITY_PDA_SEED};
 
 use crate::errors::*;
 use crate::state::*;
@@ -17,18 +17,31 @@ pub struct VaultTransactionCreateArgs {
     pub ephemeral_signers: u8,
     pub transaction_message: Vec<u8>,
     pub memo: Option<String>,
+    pub compression_args: MutateCompressedMultisigArgs,
 }
-#[derive(Accounts)]
+#[light_system_accounts]
+#[derive(Accounts, LightTraits)]
 #[instruction(args: VaultTransactionCreateArgs)]
 pub struct VaultTransactionCreate<'info> {
-
-    pub multisig: Account<'info, Multisig>,
+    /// Multsig Account (empty) -- Validation of data gets performed by the
+    /// light system program
+    #[account(
+        seeds = [SEED_PREFIX, SEED_MULTISIG, &args.compression_args.multisig_data.create_key.as_ref()],
+        bump = args.compression_args.multisig_data.bump,
+    )]
+    pub multisig: AccountInfo<'info>,
 
     #[account(
         init,
         payer = rent_payer,
         space = VaultTransaction::size(args.ephemeral_signers, &args.transaction_message)?,
-        // Seed checks are done in the validate function due to light context macro
+        seeds = [
+            SEED_PREFIX,
+            multisig.key().as_ref(),
+            SEED_TRANSACTION,
+            &args.compression_args.multisig_data.transaction_index.checked_add(1).unwrap().to_le_bytes(),
+        ],
+        bump
     )]
     pub transaction: Account<'info, VaultTransaction>,
 
@@ -36,94 +49,52 @@ pub struct VaultTransactionCreate<'info> {
     pub creator: Signer<'info>,
 
     /// The payer for the transaction account rent.
+    #[fee_payer]
     #[account(mut)]
     pub rent_payer: Signer<'info>,
 
-    pub system_program: Program<'info, System>,
+    #[authority]
+    #[account(
+        seeds = [CPI_AUTHORITY_PDA_SEED],
+        bump,
+    )]
+    pub cpi_authority: AccountInfo<'info>,
+
+    #[self_program]
+    pub squads_program: Program<'info, crate::program::SquadsMultisigProgram>,
 }
 
 impl<'info> VaultTransactionCreate<'info> {
-    pub fn validate(&self) -> Result<()> {
+    pub fn validate(&self, args: &VaultTransactionCreateArgs) -> Result<()> {
         let Self {
             creator,
             transaction,
             ..
         } = self;
-        // let multisig = &light_context.multisig;
-        // let multisig_pubkey = Pubkey::find_program_address(
-        //     &[
-        //         &SEED_PREFIX.to_vec(),
-        //         &SEED_MULTISIG.to_vec(),
-        //         &multisig.create_key.as_ref().to_vec(),
-        //     ],
-        //     &crate::id(),
-        // )
-        // .0;
+        let multisig = LightMultisig::from(&args.compression_args.multisig_data);
 
-        // check vault transaction seeds
-        // let should_be_vault_transaction = Pubkey::find_program_address(
-        //     &[
-        //         &SEED_PREFIX.to_vec(),
-        //         &SEED_MULTISIG.to_vec(),
-        //         &multisig_pubkey.to_bytes(),
-        //         &SEED_TRANSACTION.to_vec(),
-        //         &multisig
-        //             .transaction_index
-        //             .checked_add(1)
-        //             .unwrap()
-        //             .to_le_bytes(),
-        //     ],
-        //     &crate::id(),
-        // )
-        // .0;
-
-        // require_keys_eq!(
-        //     transaction.key(),
-        //     should_be_vault_transaction,
-        //     MultisigError::InvalidAccount
-        // );
-
-        // creator
-        // require!(
-        //     multisig.is_member(creator.key()).is_some(),
-        //     MultisigError::NotAMember
-        // );
-        // require!(
-        //     multisig.member_has_permission(creator.key(), Permission::Initiate),
-        //     MultisigError::Unauthorized
-        // );
+        // We're validating on user passed data, but its not dangerous since the
+        // instruction will fail if the data is invalid.
+        require!(
+            multisig.is_member(creator.key()).is_some(),
+            MultisigError::NotAMember
+        );
+        require!(
+            multisig.member_has_permission(creator.key(), Permission::Initiate),
+            MultisigError::Unauthorized
+        );
 
         Ok(())
     }
 
     /// Create a new vault transaction.
-    #[access_control(ctx.accounts.validate())]
+    #[access_control(ctx.accounts.validate(&args))]
     pub fn vault_transaction_create(
-        ctx: Context<Self>,
+        ctx: Context<'_, '_, 'info, 'info, Self>,
         args: VaultTransactionCreateArgs,
     ) -> Result<()> {
-        // TODO: Remove this
-        let mut multisig = LightMultisig {
-            create_key: Pubkey::default(),
-            config_authority: Pubkey::default(),
-            threshold: 0,
-            time_lock: 0,
-            transaction_index: 0,
-            stale_transaction_index: 0,
-            bump: 0,
-            members: MemberList(Vec::new()),
-            rent_collector: OptionPubkey(Some(Pubkey::default())),
-        };
-
-        let multisig_key = Pubkey::find_program_address(
-            &[
-                &SEED_PREFIX.to_vec(),
-                &SEED_MULTISIG.to_vec(),
-                &multisig.create_key.as_ref().to_vec(),
-            ],
-            &crate::id(),
-        )
-        .0;
+        let mut multisig = LightMultisig::from(&args.compression_args.multisig_data);
+        let multisig_key = ctx.accounts.multisig.key();
         let transaction = &mut ctx.accounts.transaction;
         let creator = &mut ctx.accounts.creator;
 
@@ -188,6 +159,12 @@ impl<'info> VaultTransactionCreate<'info> {
 
         // Logs for indexing.
         msg!("transaction index: {}", transaction_index);
+
+        // Mutate the compressed multisig account
+        let cpi_authority_bump: u8 = ctx.bumps.cpi_authority;
+        let cpi_authority_signer_seeds = [CPI_AUTHORITY_PDA_SEED, &[cpi_authority_bump]];
+
+        multisig.compressed_mutate(ctx, args.compression_args, &[&cpi_authority_signer_seeds])?;
 
         Ok(())
     }

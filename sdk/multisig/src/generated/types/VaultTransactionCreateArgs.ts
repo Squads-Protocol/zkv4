@@ -6,11 +6,16 @@
  */
 
 import * as beet from '@metaplex-foundation/beet'
+import {
+  MutateCompressedMultisigArgs,
+  mutateCompressedMultisigArgsBeet,
+} from './MutateCompressedMultisigArgs'
 export type VaultTransactionCreateArgs = {
   vaultIndex: number
   ephemeralSigners: number
   transactionMessage: Uint8Array
   memo: beet.COption<string>
+  compressionArgs: MutateCompressedMultisigArgs
 }
 
 /**
@@ -24,6 +29,7 @@ export const vaultTransactionCreateArgsBeet =
       ['ephemeralSigners', beet.u8],
       ['transactionMessage', beet.bytes],
       ['memo', beet.coption(beet.utf8String)],
+      ['compressionArgs', mutateCompressedMultisigArgsBeet],
     ],
     'VaultTransactionCreateArgs'
   )

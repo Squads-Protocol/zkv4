@@ -41,10 +41,17 @@ export const vaultTransactionCreateFromBufferStruct =
  * Accounts required by the _vaultTransactionCreateFromBuffer_ instruction
  *
  * @property [] vaultTransactionCreateItemMultisig
- * @property [_writable_, **signer**] vaultTransactionCreateItemTransaction
+ * @property [_writable_] vaultTransactionCreateItemTransaction
  * @property [**signer**] vaultTransactionCreateItemCreator
  * @property [_writable_, **signer**] vaultTransactionCreateItemRentPayer
+ * @property [] vaultTransactionCreateItemCpiAuthority
+ * @property [] vaultTransactionCreateItemSquadsProgram
+ * @property [] vaultTransactionCreateItemLightSystemProgram
  * @property [] vaultTransactionCreateItemSystemProgram
+ * @property [] vaultTransactionCreateItemAccountCompressionProgram
+ * @property [] vaultTransactionCreateItemRegisteredProgramPda
+ * @property [] vaultTransactionCreateItemNoopProgram
+ * @property [] vaultTransactionCreateItemAccountCompressionAuthority
  * @property [_writable_] transactionBuffer
  * @property [_writable_, **signer**] creator
  * @category Instructions
@@ -56,7 +63,14 @@ export type VaultTransactionCreateFromBufferInstructionAccounts = {
   vaultTransactionCreateItemTransaction: web3.PublicKey
   vaultTransactionCreateItemCreator: web3.PublicKey
   vaultTransactionCreateItemRentPayer: web3.PublicKey
+  vaultTransactionCreateItemCpiAuthority: web3.PublicKey
+  vaultTransactionCreateItemSquadsProgram: web3.PublicKey
+  vaultTransactionCreateItemLightSystemProgram: web3.PublicKey
   vaultTransactionCreateItemSystemProgram: web3.PublicKey
+  vaultTransactionCreateItemAccountCompressionProgram: web3.PublicKey
+  vaultTransactionCreateItemRegisteredProgramPda: web3.PublicKey
+  vaultTransactionCreateItemNoopProgram: web3.PublicKey
+  vaultTransactionCreateItemAccountCompressionAuthority: web3.PublicKey
   transactionBuffer: web3.PublicKey
   creator: web3.PublicKey
   anchorRemainingAccounts?: web3.AccountMeta[]
@@ -95,7 +109,7 @@ export function createVaultTransactionCreateFromBufferInstruction(
     {
       pubkey: accounts.vaultTransactionCreateItemTransaction,
       isWritable: true,
-      isSigner: true,
+      isSigner: false,
     },
     {
       pubkey: accounts.vaultTransactionCreateItemCreator,
@@ -108,7 +122,42 @@ export function createVaultTransactionCreateFromBufferInstruction(
       isSigner: true,
     },
     {
+      pubkey: accounts.vaultTransactionCreateItemCpiAuthority,
+      isWritable: false,
+      isSigner: false,
+    },
+    {
+      pubkey: accounts.vaultTransactionCreateItemSquadsProgram,
+      isWritable: false,
+      isSigner: false,
+    },
+    {
+      pubkey: accounts.vaultTransactionCreateItemLightSystemProgram,
+      isWritable: false,
+      isSigner: false,
+    },
+    {
       pubkey: accounts.vaultTransactionCreateItemSystemProgram,
+      isWritable: false,
+      isSigner: false,
+    },
+    {
+      pubkey: accounts.vaultTransactionCreateItemAccountCompressionProgram,
+      isWritable: false,
+      isSigner: false,
+    },
+    {
+      pubkey: accounts.vaultTransactionCreateItemRegisteredProgramPda,
+      isWritable: false,
+      isSigner: false,
+    },
+    {
+      pubkey: accounts.vaultTransactionCreateItemNoopProgram,
+      isWritable: false,
+      isSigner: false,
+    },
+    {
+      pubkey: accounts.vaultTransactionCreateItemAccountCompressionAuthority,
       isWritable: false,
       isSigner: false,
     },

@@ -40,9 +40,16 @@ export const vaultTransactionCreateStruct = new beet.FixableBeetArgsStruct<
  * Accounts required by the _vaultTransactionCreate_ instruction
  *
  * @property [] multisig
- * @property [_writable_, **signer**] transaction
+ * @property [_writable_] transaction
  * @property [**signer**] creator
  * @property [_writable_, **signer**] rentPayer
+ * @property [] cpiAuthority
+ * @property [] squadsProgram
+ * @property [] lightSystemProgram
+ * @property [] accountCompressionProgram
+ * @property [] registeredProgramPda
+ * @property [] noopProgram
+ * @property [] accountCompressionAuthority
  * @category Instructions
  * @category VaultTransactionCreate
  * @category generated
@@ -52,7 +59,14 @@ export type VaultTransactionCreateInstructionAccounts = {
   transaction: web3.PublicKey
   creator: web3.PublicKey
   rentPayer: web3.PublicKey
+  cpiAuthority: web3.PublicKey
+  squadsProgram: web3.PublicKey
+  lightSystemProgram: web3.PublicKey
   systemProgram?: web3.PublicKey
+  accountCompressionProgram: web3.PublicKey
+  registeredProgramPda: web3.PublicKey
+  noopProgram: web3.PublicKey
+  accountCompressionAuthority: web3.PublicKey
   anchorRemainingAccounts?: web3.AccountMeta[]
 }
 
@@ -88,7 +102,7 @@ export function createVaultTransactionCreateInstruction(
     {
       pubkey: accounts.transaction,
       isWritable: true,
-      isSigner: true,
+      isSigner: false,
     },
     {
       pubkey: accounts.creator,
@@ -101,7 +115,42 @@ export function createVaultTransactionCreateInstruction(
       isSigner: true,
     },
     {
+      pubkey: accounts.cpiAuthority,
+      isWritable: false,
+      isSigner: false,
+    },
+    {
+      pubkey: accounts.squadsProgram,
+      isWritable: false,
+      isSigner: false,
+    },
+    {
+      pubkey: accounts.lightSystemProgram,
+      isWritable: false,
+      isSigner: false,
+    },
+    {
       pubkey: accounts.systemProgram ?? web3.SystemProgram.programId,
+      isWritable: false,
+      isSigner: false,
+    },
+    {
+      pubkey: accounts.accountCompressionProgram,
+      isWritable: false,
+      isSigner: false,
+    },
+    {
+      pubkey: accounts.registeredProgramPda,
+      isWritable: false,
+      isSigner: false,
+    },
+    {
+      pubkey: accounts.noopProgram,
+      isWritable: false,
+      isSigner: false,
+    },
+    {
+      pubkey: accounts.accountCompressionAuthority,
       isWritable: false,
       isSigner: false,
     },

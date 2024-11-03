@@ -5,6 +5,7 @@
 	],
 	"scripts": {
 		"build": "turbo run build",
+		"test:rerun-ts": "turbo run build && anchor test --skip-local-validator --skip-deploy --skip-build -- --features=testing",
 		"test:detached": "turbo run build && light test-validator && (trap 'light test-validator --stop' SIGINT; (anchor test --skip-local-validator -- --features=testing || true) && echo '\n🚀 Validator still running. Use \"light test-validator --stop\" to stop it.\n'; while true; do sleep 1; done)",
 		"test": "turbo run build && light test-validator && (anchor test --skip-local-validator -- --features=testing; code=$?; light test-validator --stop && (if [ $code -eq 0 ]; then echo \"\n⚠️ Don't forget to recompile the .so file before deployment\n\"; else echo \"\n❌ Tests failed with exit code $code\n\"; fi); exit $code)",
 		"pretest": "mkdir -p target/deploy && cp ./test-program-keypair.json ./target/deploy/squads_multisig_program-keypair.json",

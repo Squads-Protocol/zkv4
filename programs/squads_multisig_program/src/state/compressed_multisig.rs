@@ -1,19 +1,25 @@
 use std::cmp::max;
 
 use super::{multisig::*, seeds::*};
-use crate::utils::{new_compressed_account, validate_merkle_trees};
+use crate::utils::{
+    input_compressed_account, new_compressed_account, output_compressed_account,
+    validate_merkle_trees,
+};
 use crate::MultisigCreateV2;
 use crate::{errors::*, id};
-use anchor_lang::prelude::*;
 use anchor_lang::system_program;
+use anchor_lang::{prelude::*, Bumps};
 use light_hasher::bytes::AsByteVec;
-use light_sdk::address::derive_address_seed;
+use light_sdk::address::{derive_address, derive_address_seed};
 use light_sdk::compressed_account::serialize_and_hash_account;
 use light_sdk::merkle_context::{
-    PackedAddressMerkleContext, PackedMerkleOutputContext, RemainingAccounts,
+    PackedAddressMerkleContext, PackedMerkleContext, PackedMerkleOutputContext,
 };
 use light_sdk::proof::CompressedProof;
-use light_sdk::utils::create_cpi_inputs_for_new_account;
+use light_sdk::traits::{
+    InvokeAccounts, InvokeCpiAccounts, InvokeCpiContextAccount, LightSystemAccount, SignerAccounts,
+};
+use light_sdk::utils::{create_cpi_inputs_for_account_update, create_cpi_inputs_for_new_account};
 use light_sdk::verify::verify;
 use light_sdk::{light_account, CPI_AUTHORITY_PDA_SEED};
 use light_utils::hash_to_bn254_field_size_be;
@@ -35,6 +41,24 @@ pub struct InitializeCompressedMultisigArgs {
 
     /// Index of the address queue account in remaining accounts
     pub address_queue_account_index: u8,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Debug, Clone)]
+pub struct MutateCompressedMultisigArgs {
+    /// Compressed proof for account verification
+    pub compressed_proof: CompressedProof,
+
+    /// Address of the compressed multisig account
+    pub address: [u8; 32],
+
+    /// State/Data of the current multisig account
+    pub multisig_data: LightMultisigData,
+
+    /// Root index in the address tree
+    pub merkle_tree_root_index: u16,
+
+    /// Merkle tree context
+    pub merkle_context: PackedMerkleContext,
 }
 
 #[light_account]
@@ -74,6 +98,36 @@ pub struct LightMultisig {
     pub members: MemberList,
 }
 
+/// This type exists so that it can be used easily with solita. Using an account
+/// as an arg creates weird issue wrt to the account discriminator.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct LightMultisigData {
+    pub create_key: Pubkey,
+    pub config_authority: Pubkey,
+    pub threshold: u16,
+    pub time_lock: u32,
+    pub transaction_index: u64,
+    pub stale_transaction_index: u64,
+    pub rent_collector: OptionPubkey,
+    pub bump: u8,
+    pub members: MemberList,
+}
+
+impl From<&LightMultisigData> for LightMultisig {
+    fn from(value: &LightMultisigData) -> Self {
+        Self {
+            create_key: value.create_key,
+            config_authority: value.config_authority,
+            threshold: value.threshold,
+            time_lock: value.time_lock,
+            transaction_index: value.transaction_index,
+            stale_transaction_index: value.stale_transaction_index,
+            rent_collector: value.rent_collector.clone(),
+            bump: value.bump,
+            members: value.members.clone(),
+        }
+    }
+}
 impl LightMultisig {
     pub fn size(members_length: usize) -> usize {
         8  + // anchor account discriminator
@@ -283,7 +337,6 @@ impl LightMultisig {
 
         Ok(())
     }
-
     pub fn compressed_create<'info>(
         &self,
         ctx: &Context<'_, '_, 'info, 'info, MultisigCreateV2<'info>>,
@@ -308,10 +361,9 @@ impl LightMultisig {
             address_queue_pubkey_index: args.address_queue_account_index,
         };
 
-        let multisig_address_seed = derive_address_seed(
-            &[SEED_PREFIX, SEED_MULTISIG, self.create_key.key().as_ref()],
-            &id(),
-        );
+        let multisig_address_seed =
+            derive_address_seed(&[&ctx.accounts.multisig.key().as_ref()], &id());
+
         // Get CPI parameters
         let (state_output_params, new_address_params) = new_compressed_account(
             self,
@@ -335,6 +387,43 @@ impl LightMultisig {
         );
 
         verify(ctx, &cpi_inputs, &[&signer_seeds])
+    }
+
+    pub fn compressed_mutate<'info, T>(
+        &self,
+        ctx: Context<'_, '_, '_, 'info, T>,
+        args: MutateCompressedMultisigArgs,
+        cpi_authority_seeds: &[&[&[u8]]],
+    ) -> Result<()>
+    where
+        T: InvokeAccounts<'info>
+            + LightSystemAccount<'info>
+            + InvokeCpiAccounts<'info>
+            + SignerAccounts<'info>
+            + InvokeCpiContextAccount<'info>
+            + Bumps,
+    {
+        let multisig_data = LightMultisig::from(&args.multisig_data);
+
+        let old_compressed_multisig = input_compressed_account(
+            &multisig_data,
+            &args.address,
+            &crate::id(),
+            &args.merkle_context,
+            args.merkle_tree_root_index,
+        )?;
+
+        let new_compressed_multisig =
+            output_compressed_account(self, &args.address, &crate::id(), &args.merkle_context)?;
+
+        let cpi_inputs = create_cpi_inputs_for_account_update(
+            args.compressed_proof,
+            old_compressed_multisig,
+            new_compressed_multisig,
+            None,
+        );
+
+        verify(&ctx, &cpi_inputs, cpi_authority_seeds)
     }
 }
 

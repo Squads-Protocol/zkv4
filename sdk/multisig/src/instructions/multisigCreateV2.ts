@@ -6,7 +6,6 @@ import {
   PROGRAM_ID,
 } from "../generated";
 import { getProgramConfigPda } from "../pda";
-import { CompressedProof, PackedMerkleContext} from "@lightprotocol/stateless.js";
 export interface LightSpecificAccounts {
   accountCompressionAuthority: PublicKey;
   accountCompressionProgram: PublicKey;
@@ -54,6 +53,7 @@ export function multisigCreateV2({
   return createMultisigCreateV2Instruction(
     {
       programConfig: programConfigPda,
+      multisig: multisigPda,
       treasury,
       creator,
       createKey,

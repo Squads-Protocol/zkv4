@@ -8,4 +8,3 @@ pub const SEED_VAULT: &[u8] = b"vault";
 pub const SEED_EPHEMERAL_SIGNER: &[u8] = b"ephemeral_signer";
 pub const SEED_SPENDING_LIMIT: &[u8] = b"spending_limit";
 pub const SEED_TRANSACTION_BUFFER: &[u8] = b"transaction_buffer";
-pub const CPI_AUTHORITY_SEED: &[u8] = b"cpi_authority";

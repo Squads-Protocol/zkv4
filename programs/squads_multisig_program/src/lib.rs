@@ -176,7 +176,7 @@ pub mod squads_multisig_program {
 
     /// Create a new vault transaction.
     pub fn vault_transaction_create<'info>(
-        ctx: Context<'_, '_, '_, 'info, VaultTransactionCreate<'info>>,
+        ctx: Context<'_, '_, 'info, 'info, VaultTransactionCreate<'info>>,
         args: VaultTransactionCreateArgs,
     ) -> Result<()> {
         let result = VaultTransactionCreate::vault_transaction_create(ctx, args);
