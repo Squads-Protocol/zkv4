@@ -54,11 +54,15 @@ export function vaultTransactionCreate({
   const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
     units: 500_000,
   });
+  const heap_frame_ix = ComputeBudgetProgram.requestHeapFrame({
+    bytes: 8 * 32 * 1024,
+  })
 
   const message = new TransactionMessage({
     payerKey: feePayer,
     recentBlockhash: blockhash,
     instructions: [
+      heap_frame_ix,
       computeBudgetIx,
       instructions.vaultTransactionCreate({
         multisigPda,

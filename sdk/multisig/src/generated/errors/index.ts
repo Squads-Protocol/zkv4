@@ -1062,6 +1062,29 @@ createErrorFromNameLookup.set(
 )
 
 /**
+ * InvalidMerkleProof: 'Invalid Merkle Proof'
+ *
+ * @category Errors
+ * @category generated
+ */
+export class InvalidMerkleProofError extends Error {
+  readonly code: number = 0x179e
+  readonly name: string = 'InvalidMerkleProof'
+  constructor() {
+    super('Invalid Merkle Proof')
+    if (typeof Error.captureStackTrace === 'function') {
+      Error.captureStackTrace(this, InvalidMerkleProofError)
+    }
+  }
+}
+
+createErrorFromCodeLookup.set(0x179e, () => new InvalidMerkleProofError())
+createErrorFromNameLookup.set(
+  'InvalidMerkleProof',
+  () => new InvalidMerkleProofError()
+)
+
+/**
  * Attempts to resolve a custom program error from the provided error code.
  * @category Errors
  * @category generated
