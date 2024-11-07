@@ -1,9 +1,6 @@
+use crate::errors::*;
 use anchor_lang::prelude::*;
-use light_sdk::{pubkey };
-use crate::{errors::*};
-
-
-
+use light_sdk::pubkey;
 
 pub const MERKLE_TREE_PUBKEY: Pubkey = pubkey!("smt1NamzXdq4AMqS2fS2F1i5KTYPZRhoHgWx38d8WsT");
 pub const ADDRESS_MERKLE_TREE_PUBKEY: Pubkey =

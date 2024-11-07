@@ -94,6 +94,8 @@ impl<'info> VaultTransactionCreate<'info> {
         args: VaultTransactionCreateArgs,
     ) -> Result<()> {
         let mut multisig = LightMultisig::from(&args.compression_args.multisig_data);
+        multisig.compressed_verify_state(&ctx, &args.compression_args)?;
+
         let multisig_key = ctx.accounts.multisig.key();
         let transaction = &mut ctx.accounts.transaction;
         let creator = &mut ctx.accounts.creator;

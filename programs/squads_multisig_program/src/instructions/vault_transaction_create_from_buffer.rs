@@ -69,7 +69,11 @@ impl<'info> VaultTransactionCreateFromBuffer<'info> {
             .rent_payer
             .to_account_info();
 
-        let system_program = &ctx.accounts.vault_transaction_create.system_program.to_account_info();
+        let system_program = &ctx
+            .accounts
+            .vault_transaction_create
+            .system_program
+            .to_account_info();
 
         // Read-only accounts
         let transaction_buffer = &ctx.accounts.transaction_buffer;
@@ -106,7 +110,7 @@ impl<'info> VaultTransactionCreateFromBuffer<'info> {
             ephemeral_signers: args.ephemeral_signers,
             transaction_message: transaction_buffer.buffer.clone(),
             memo: args.memo,
-            compression_args: args.compression_args
+            compression_args: args.compression_args,
         };
         // Create the context for the vault transaction create instruction
         let context = Context::new(

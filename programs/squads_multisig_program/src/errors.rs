@@ -96,4 +96,6 @@ pub enum MultisigError {
     /// Account compression related errors
     #[msg("Invalid Merkle Address")]
     InvalidMerkleAddress,
+    #[msg("Invalid Merkle Proof")]
+    InvalidMerkleProof,
 }

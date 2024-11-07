@@ -1,4 +1,5 @@
 mod compressed_account_io;
+mod compressed_account_verification;
 mod ephemeral_signers;
 mod executable_transaction_message;
 mod new_compressed_account;
@@ -7,6 +8,7 @@ mod system;
 mod validate_merkle_trees;
 
 pub use compressed_account_io::*;
+pub use compressed_account_verification::*;
 pub use ephemeral_signers::*;
 pub use executable_transaction_message::*;
 pub use new_compressed_account::*;

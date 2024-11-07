@@ -2,8 +2,9 @@ use std::cmp::max;
 
 use super::{multisig::*, seeds::*};
 use crate::utils::{
-    input_compressed_account, new_compressed_account, output_compressed_account,
-    validate_merkle_trees,
+    fetch_input_compressed_account_root, hash_input_compressed_account, input_compressed_account,
+    new_compressed_account, output_compressed_account, validate_merkle_trees,
+    verify_merkle_proof_zkp,
 };
 use crate::MultisigCreateV2;
 use crate::{errors::*, id};
@@ -23,6 +24,7 @@ use light_sdk::utils::{create_cpi_inputs_for_account_update, create_cpi_inputs_f
 use light_sdk::verify::verify;
 use light_sdk::{light_account, CPI_AUTHORITY_PDA_SEED};
 use light_utils::hash_to_bn254_field_size_be;
+use light_verifier::CompressedProof as VerifierCompressedProof;
 
 /// Initialization parameters for a compressed multisig account
 #[derive(AnchorSerialize, AnchorDeserialize, Debug, Clone)]
@@ -45,6 +47,24 @@ pub struct InitializeCompressedMultisigArgs {
 
 #[derive(AnchorSerialize, AnchorDeserialize, Debug, Clone)]
 pub struct MutateCompressedMultisigArgs {
+    /// Compressed proof for account verification
+    pub compressed_proof: CompressedProof,
+
+    /// Address of the compressed multisig account
+    pub address: [u8; 32],
+
+    /// State/Data of the current multisig account
+    pub multisig_data: LightMultisigData,
+
+    /// Root index in the address tree
+    pub merkle_tree_root_index: u16,
+
+    /// Merkle tree context
+    pub merkle_context: PackedMerkleContext,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Debug, Clone)]
+pub struct VerifyCompressedMultisigArgs {
     /// Compressed proof for account verification
     pub compressed_proof: CompressedProof,
 
@@ -424,6 +444,44 @@ impl LightMultisig {
         );
 
         verify(&ctx, &cpi_inputs, cpi_authority_seeds)
+    }
+
+    pub fn compressed_verify_state<'info, T>(
+        &self,
+        ctx: &Context<'_, '_, 'info, 'info, T>,
+        args: &MutateCompressedMultisigArgs,
+    ) -> Result<()>
+    where
+        T: InvokeAccounts<'info>
+            + LightSystemAccount<'info>
+            + InvokeCpiAccounts<'info>
+            + SignerAccounts<'info>
+            + InvokeCpiContextAccount<'info>
+            + Bumps,
+    {
+        let multisig_data = LightMultisig::from(&args.multisig_data);
+
+        let old_compressed_multisig = input_compressed_account(
+            &multisig_data,
+            &args.address,
+            &crate::id(),
+            &args.merkle_context,
+            args.merkle_tree_root_index,
+        )?;
+
+        let merkle_root = fetch_input_compressed_account_root(&old_compressed_multisig, &ctx)?;
+        let (leaf, _address) =
+            hash_input_compressed_account(&ctx.remaining_accounts, &old_compressed_multisig)?;
+
+        let verifier_compressed_proof = VerifierCompressedProof {
+            a: args.compressed_proof.a,
+            b: args.compressed_proof.b,
+            c: args.compressed_proof.c,
+        };
+
+        verify_merkle_proof_zkp(&[merkle_root], &[leaf], &verifier_compressed_proof)
+            .map_err(|_err| MultisigError::InvalidMerkleProof)?;
+        Ok(())
     }
 }
 
