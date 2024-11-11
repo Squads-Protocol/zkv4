@@ -46,25 +46,7 @@ pub struct InitializeCompressedMultisigArgs {
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Debug, Clone)]
-pub struct MutateCompressedMultisigArgs {
-    /// Compressed proof for account verification
-    pub compressed_proof: CompressedProof,
-
-    /// Address of the compressed multisig account
-    pub address: [u8; 32],
-
-    /// State/Data of the current multisig account
-    pub multisig_data: LightMultisigData,
-
-    /// Root index in the address tree
-    pub merkle_tree_root_index: u16,
-
-    /// Merkle tree context
-    pub merkle_context: PackedMerkleContext,
-}
-
-#[derive(AnchorSerialize, AnchorDeserialize, Debug, Clone)]
-pub struct VerifyCompressedMultisigArgs {
+pub struct MutateOrVerifyCompressedMultisigArgs {
     /// Compressed proof for account verification
     pub compressed_proof: CompressedProof,
 
@@ -412,7 +394,7 @@ impl LightMultisig {
     pub fn compressed_mutate<'info, T>(
         &self,
         ctx: Context<'_, '_, '_, 'info, T>,
-        args: MutateCompressedMultisigArgs,
+        args: MutateOrVerifyCompressedMultisigArgs,
         cpi_authority_seeds: &[&[&[u8]]],
     ) -> Result<()>
     where
@@ -449,7 +431,7 @@ impl LightMultisig {
     pub fn compressed_verify_state<'info, T>(
         &self,
         ctx: &Context<'_, '_, 'info, 'info, T>,
-        args: &MutateCompressedMultisigArgs,
+        args: &MutateOrVerifyCompressedMultisigArgs,
     ) -> Result<()>
     where
         T: InvokeAccounts<'info>

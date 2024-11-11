@@ -215,8 +215,11 @@ pub mod squads_multisig_program {
 
     /// Execute a vault transaction.
     /// The transaction must be `Approved`.
-    pub fn vault_transaction_execute(ctx: Context<VaultTransactionExecute>) -> Result<()> {
-        VaultTransactionExecute::vault_transaction_execute(ctx)
+    pub fn vault_transaction_execute<'info>(
+        ctx: Context<'_, '_, 'info, 'info, VaultTransactionExecute<'info>>,
+        args: VaultTransactionExecuteArgs,
+    ) -> Result<()> {
+        VaultTransactionExecute::vault_transaction_execute(ctx, args)
     }
 
     /// Create a new batch.
