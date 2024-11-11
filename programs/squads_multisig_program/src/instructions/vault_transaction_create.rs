@@ -17,7 +17,7 @@ pub struct VaultTransactionCreateArgs {
     pub ephemeral_signers: u8,
     pub transaction_message: Vec<u8>,
     pub memo: Option<String>,
-    pub compression_args: MutateCompressedMultisigArgs,
+    pub compression_args: MutateOrVerifyCompressedMultisigArgs,
 }
 #[light_system_accounts]
 #[derive(Accounts, LightTraits)]
@@ -68,7 +68,6 @@ impl<'info> VaultTransactionCreate<'info> {
     pub fn validate(&self, args: &VaultTransactionCreateArgs) -> Result<()> {
         let Self {
             creator,
-            transaction,
             ..
         } = self;
         let multisig = LightMultisig::from(&args.compression_args.multisig_data);
@@ -94,7 +93,6 @@ impl<'info> VaultTransactionCreate<'info> {
         args: VaultTransactionCreateArgs,
     ) -> Result<()> {
         let mut multisig = LightMultisig::from(&args.compression_args.multisig_data);
-        multisig.compressed_verify_state(&ctx, &args.compression_args)?;
 
         let multisig_key = ctx.accounts.multisig.key();
         let transaction = &mut ctx.accounts.transaction;
