@@ -159,8 +159,8 @@ pub mod squads_multisig_program {
     }
 
     /// Create a new config transaction.
-    pub fn config_transaction_create(
-        ctx: Context<ConfigTransactionCreate>,
+    pub fn config_transaction_create<'info>(
+        ctx: Context<'_, '_, 'info, 'info, ConfigTransactionCreate<'info>>,
         args: ConfigTransactionCreateArgs,
     ) -> Result<()> {
         ConfigTransactionCreate::config_transaction_create(ctx, args)

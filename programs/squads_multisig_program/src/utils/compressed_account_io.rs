@@ -7,6 +7,7 @@ use light_sdk::{
         PackedCompressedAccountWithMerkleContext,
     },
     merkle_context::PackedMerkleContext,
+    CPI_AUTHORITY_PDA_SEED,
 };
 
 pub fn get_compressed_account<T>(
@@ -70,4 +71,9 @@ where
         compressed_account,
         merkle_tree_index: merkle_context.merkle_tree_pubkey_index,
     })
+}
+
+pub fn get_cpi_authority_seeds<'a>(bump: &'a u8) -> [&'a [u8]; 2] {
+    let seeds = [CPI_AUTHORITY_PDA_SEED, std::slice::from_ref(bump)];
+    seeds
 }
