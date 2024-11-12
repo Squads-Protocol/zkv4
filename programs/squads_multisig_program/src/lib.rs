@@ -242,7 +242,10 @@ pub mod squads_multisig_program {
     }
 
     /// Create a new multisig proposal.
-    pub fn proposal_create(ctx: Context<ProposalCreate>, args: ProposalCreateArgs) -> Result<()> {
+    pub fn proposal_create<'info>(
+        ctx: Context<'_, '_, 'info, 'info, ProposalCreate<'info>>,
+        args: ProposalCreateArgs,
+    ) -> Result<()> {
         ProposalCreate::proposal_create(ctx, args)
     }
 

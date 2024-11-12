@@ -1,4 +1,7 @@
 use anchor_lang::prelude::*;
+use light_sdk::light_system_accounts;
+use light_sdk::LightTraits;
+use light_sdk::CPI_AUTHORITY_PDA_SEED;
 
 use crate::errors::*;
 use crate::state::*;
@@ -9,21 +12,24 @@ pub struct ProposalCreateArgs {
     pub transaction_index: u64,
     /// Whether the proposal should be initialized with status `Draft`.
     pub draft: bool,
+    /// Args needed for compression
+    pub compression_args: MutateOrVerifyCompressedMultisigArgs,
 }
-
-#[derive(Accounts)]
+#[light_system_accounts]
+#[derive(Accounts, LightTraits)]
 #[instruction(args: ProposalCreateArgs)]
 pub struct ProposalCreate<'info> {
+    // CHECK: Validation happens explicitly in validate() since the multisig is read-only
     #[account(
-        seeds = [SEED_PREFIX, SEED_MULTISIG, multisig.create_key.as_ref()],
-        bump = multisig.bump,
+        seeds = [SEED_PREFIX, SEED_MULTISIG, args.compression_args.multisig_data.create_key.as_ref()],
+        bump = args.compression_args.multisig_data.bump,
     )]
-    pub multisig: Account<'info, Multisig>,
+    pub multisig: AccountInfo<'info>,
 
     #[account(
         init,
         payer = rent_payer,
-        space = Proposal::size(multisig.members.len()),
+        space = Proposal::size(args.compression_args.multisig_data.members.len()),
         seeds = [
             SEED_PREFIX,
             multisig.key().as_ref(),
@@ -36,20 +42,37 @@ pub struct ProposalCreate<'info> {
     pub proposal: Account<'info, Proposal>,
 
     /// The member of the multisig that is creating the proposal.
+    #[fee_payer]
     pub creator: Signer<'info>,
 
     /// The payer for the proposal account rent.
     #[account(mut)]
     pub rent_payer: Signer<'info>,
 
-    pub system_program: Program<'info, System>,
+    // Light Related Accounts
+    #[authority]
+    #[account(
+        seeds = [CPI_AUTHORITY_PDA_SEED],
+        bump,
+    )]
+    pub cpi_authority: AccountInfo<'info>,
+    #[self_program]
+    pub squads_program: Program<'info, crate::program::SquadsMultisigProgram>,
 }
 
-impl ProposalCreate<'_> {
-    fn validate(&self, args: &ProposalCreateArgs) -> Result<()> {
-        let Self {
-            multisig, creator, ..
-        } = self;
+impl<'info> ProposalCreate<'info> {
+    fn validate(
+        &self,
+        ctx: &Context<'_, '_, 'info, 'info, Self>,
+        args: &ProposalCreateArgs,
+    ) -> Result<()> {
+        let Self { creator, .. } = self;
+        // Parse the multisig from the compression args
+        let multisig = LightMultisig::from(&args.compression_args.multisig_data);
+
+        // Validate the state of the multisig
+        multisig.compressed_verify_state(ctx, &args.compression_args)?;
+
         let creator_key = creator.key();
 
         // args
@@ -68,17 +91,14 @@ impl ProposalCreate<'_> {
         // creator
         // Has to be a member.
         require!(
-            self.multisig.is_member(self.creator.key()).is_some(),
+            multisig.is_member(self.creator.key()).is_some(),
             MultisigError::NotAMember
         );
 
         // Must have at least one of the following permissions: Initiate or Vote.
         require!(
-            self.multisig
-                .member_has_permission(creator_key, Permission::Initiate)
-                || self
-                    .multisig
-                    .member_has_permission(creator_key, Permission::Vote),
+            multisig.member_has_permission(creator_key, Permission::Initiate)
+                || multisig.member_has_permission(creator_key, Permission::Vote),
             MultisigError::Unauthorized
         );
 
@@ -86,8 +106,8 @@ impl ProposalCreate<'_> {
     }
 
     /// Create a new multisig proposal.
-    #[access_control(ctx.accounts.validate(&args))]
-    pub fn proposal_create(ctx: Context<Self>, args: ProposalCreateArgs) -> Result<()> {
+    #[access_control(ctx.accounts.validate(&ctx, &args))]
+    pub fn proposal_create(ctx: Context<'_, '_, 'info, 'info, Self>, args: ProposalCreateArgs) -> Result<()> {
         let proposal = &mut ctx.accounts.proposal;
 
         proposal.multisig = ctx.accounts.multisig.key();
