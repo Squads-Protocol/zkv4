@@ -2,20 +2,28 @@ use anchor_lang::prelude::*;
 
 use crate::errors::*;
 use crate::state::*;
+use light_sdk::light_system_accounts;
+use light_sdk::LightTraits;
+use light_sdk::CPI_AUTHORITY_PDA_SEED;
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct ProposalVoteArgs {
     pub memo: Option<String>,
+    pub compression_args: MutateOrVerifyCompressedMultisigArgs,
 }
 
-#[derive(Accounts)]
+#[light_system_accounts]
+#[derive(Accounts, LightTraits)]
+#[instruction(args: ProposalVoteArgs)]
 pub struct ProposalVote<'info> {
+    // CHECK: Validation happens explicitly in validate()
     #[account(
-        seeds = [SEED_PREFIX, SEED_MULTISIG, multisig.create_key.as_ref()],
-        bump = multisig.bump,
+        seeds = [SEED_PREFIX, SEED_MULTISIG, args.compression_args.multisig_data.create_key.as_ref()],
+        bump = args.compression_args.multisig_data.bump,
     )]
-    pub multisig: Account<'info, Multisig>,
+    pub multisig: AccountInfo<'info>,
 
+    #[fee_payer]
     #[account(mut)]
     pub member: Signer<'info>,
 
@@ -31,6 +39,16 @@ pub struct ProposalVote<'info> {
         bump = proposal.bump,
     )]
     pub proposal: Account<'info, Proposal>,
+
+    // Light Related Accounts
+    #[authority]
+    #[account(
+        seeds = [CPI_AUTHORITY_PDA_SEED],
+        bump,
+    )]
+    pub cpi_authority: AccountInfo<'info>,
+    #[self_program]
+    pub squads_program: Program<'info, crate::program::SquadsMultisigProgram>,
 }
 
 #[derive(Accounts)]
@@ -41,15 +59,22 @@ pub struct ProposalCancelV2<'info> {
     pub system_program: Program<'info, System>,
 }
 
-impl ProposalVote<'_> {
-    fn validate(&self, vote: Vote) -> Result<()> {
+impl<'info> ProposalVote<'info> {
+    fn validate(
+        &self,
+        ctx: &Context<'_, '_, 'info, 'info, Self>,
+        args: &ProposalVoteArgs,
+        vote: Vote,
+    ) -> Result<()> {
         let Self {
-            multisig,
-            proposal,
-            member,
-            ..
+            proposal, member, ..
         } = self;
+        // Parse multisig from compressed data
+        let multisig = LightMultisig::from(&args.compression_args.multisig_data);
 
+        // Since the multisig is read-only, explicit validation of its state is
+        // required.
+        multisig.compressed_verify_state(ctx, &args.compression_args)?;
         // member
         require!(
             multisig.is_member(member.key()).is_some(),
@@ -87,9 +112,12 @@ impl ProposalVote<'_> {
 
     /// Approve a multisig proposal on behalf of the `member`.
     /// The proposal must be `Active`.
-    #[access_control(ctx.accounts.validate(Vote::Approve))]
-    pub fn proposal_approve(ctx: Context<Self>, _args: ProposalVoteArgs) -> Result<()> {
-        let multisig = &mut ctx.accounts.multisig;
+    #[access_control(ctx.accounts.validate(&ctx, &args, Vote::Approve))]
+    pub fn proposal_approve(
+        ctx: Context<'_, '_, 'info, 'info, Self>,
+        args: ProposalVoteArgs,
+    ) -> Result<()> {
+        let multisig = LightMultisig::from(&args.compression_args.multisig_data);
         let proposal = &mut ctx.accounts.proposal;
         let member = &mut ctx.accounts.member;
 
@@ -100,13 +128,16 @@ impl ProposalVote<'_> {
 
     /// Reject a multisig proposal on behalf of the `member`.
     /// The proposal must be `Active`.
-    #[access_control(ctx.accounts.validate(Vote::Reject))]
-    pub fn proposal_reject(ctx: Context<Self>, _args: ProposalVoteArgs) -> Result<()> {
-        let multisig = &mut ctx.accounts.multisig;
+    #[access_control(ctx.accounts.validate(&ctx, &args, Vote::Reject))]
+    pub fn proposal_reject(
+        ctx: Context<'_, '_, 'info, 'info, Self>,
+        args: ProposalVoteArgs,
+    ) -> Result<()> {
+        let multisig = LightMultisig::from(&args.compression_args.multisig_data);
         let proposal = &mut ctx.accounts.proposal;
         let member = &mut ctx.accounts.member;
 
-        let cutoff = Multisig::cutoff(multisig);
+        let cutoff = LightMultisig::cutoff(&multisig);
 
         proposal.reject(member.key(), cutoff)?;
 
@@ -115,9 +146,12 @@ impl ProposalVote<'_> {
 
     /// Cancel a multisig proposal on behalf of the `member`.
     /// The proposal must be `Approved`.
-    #[access_control(ctx.accounts.validate(Vote::Cancel))]
-    pub fn proposal_cancel(ctx: Context<Self>, _args: ProposalVoteArgs) -> Result<()> {
-        let multisig = &mut ctx.accounts.multisig;
+    #[access_control(ctx.accounts.validate(&ctx, &args, Vote::Cancel))]
+    pub fn proposal_cancel(
+        ctx: Context<'_, '_, 'info, 'info, Self>,
+        args: ProposalVoteArgs,
+    ) -> Result<()> {
+        let multisig = LightMultisig::from(&args.compression_args.multisig_data);
         let proposal = &mut ctx.accounts.proposal;
         let member = &mut ctx.accounts.member;
 
@@ -136,10 +170,10 @@ impl<'info> ProposalCancelV2<'info> {
     /// The proposal must be `Approved`.
     pub fn proposal_cancel_v2(
         ctx: Context<'_, '_, 'info, 'info, Self>,
-        _args: ProposalVoteArgs,
+        args: ProposalVoteArgs,
     ) -> Result<()> {
         // Readonly accounts
-        let multisig = &ctx.accounts.proposal_vote.multisig.clone();
+        let multisig = LightMultisig::from(&args.compression_args.multisig_data);
 
         // Account infos necessary for reallocation
         let proposal_account_info = &ctx.accounts.proposal_vote.proposal.to_account_info();
@@ -155,7 +189,7 @@ impl<'info> ProposalCancelV2<'info> {
         );
 
         // Call cancel instruction
-        ProposalVote::proposal_cancel(cancel_context, _args)?;
+        ProposalVote::proposal_cancel(cancel_context, args)?;
 
         // Reallocate the proposal size if needed
         Proposal::realloc_if_needed(

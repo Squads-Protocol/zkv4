@@ -253,19 +253,28 @@ pub mod squads_multisig_program {
 
     /// Approve a multisig proposal on behalf of the `member`.
     /// The proposal must be `Active`.
-    pub fn proposal_approve(ctx: Context<ProposalVote>, args: ProposalVoteArgs) -> Result<()> {
+    pub fn proposal_approve<'info>(
+        ctx: Context<'_, '_, 'info, 'info, ProposalVote<'info>>,
+        args: ProposalVoteArgs,
+    ) -> Result<()> {
         ProposalVote::proposal_approve(ctx, args)
     }
 
     /// Reject a multisig proposal on behalf of the `member`.
     /// The proposal must be `Active`.
-    pub fn proposal_reject(ctx: Context<ProposalVote>, args: ProposalVoteArgs) -> Result<()> {
+    pub fn proposal_reject<'info>(
+        ctx: Context<'_, '_, 'info, 'info, ProposalVote<'info>>,
+        args: ProposalVoteArgs,
+    ) -> Result<()> {
         ProposalVote::proposal_reject(ctx, args)
     }
 
     /// Cancel a multisig proposal on behalf of the `member`.
     /// The proposal must be `Approved`.
-    pub fn proposal_cancel(ctx: Context<ProposalVote>, args: ProposalVoteArgs) -> Result<()> {
+    pub fn proposal_cancel<'info>(
+        ctx: Context<'_, '_, 'info, 'info, ProposalVote<'info>>,
+        args: ProposalVoteArgs,
+    ) -> Result<()> {
         ProposalVote::proposal_cancel(ctx, args)
     }
 
