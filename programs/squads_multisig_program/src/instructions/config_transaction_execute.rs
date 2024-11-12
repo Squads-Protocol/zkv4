@@ -4,16 +4,26 @@ use crate::errors::*;
 use crate::id;
 use crate::state::*;
 use crate::utils::*;
+use light_sdk::light_system_accounts;
+use light_sdk::LightTraits;
+use light_sdk::CPI_AUTHORITY_PDA_SEED;
 
-#[derive(Accounts)]
+#[derive(AnchorSerialize, AnchorDeserialize)]
+pub struct ConfigTransactionExecuteArgs {
+    pub compression_args: MutateOrVerifyCompressedMultisigArgs,
+}
+
+#[light_system_accounts]
+#[derive(Accounts, LightTraits)]
+#[instruction(args: ConfigTransactionExecuteArgs)]
 pub struct ConfigTransactionExecute<'info> {
-    /// The multisig account that owns the transaction.
+    // Multisig Account is mutable
+    // CHECK: Validation happens implicitly in multisig.compressed_mutate()
     #[account(
-        mut,
-        seeds = [SEED_PREFIX, SEED_MULTISIG, multisig.create_key.as_ref()],
-        bump = multisig.bump,
+        seeds = [SEED_PREFIX, SEED_MULTISIG, args.compression_args.multisig_data.create_key.as_ref()],
+        bump = args.compression_args.multisig_data.bump,
     )]
-    pub multisig: Box<Account<'info, Multisig>>,
+    pub multisig: AccountInfo<'info>,
 
     /// One of the multisig members with `Execute` permission.
     pub member: Signer<'info>,
@@ -43,28 +53,36 @@ pub struct ConfigTransactionExecute<'info> {
         bump = transaction.bump,
     )]
     pub transaction: Account<'info, ConfigTransaction>,
-
+    /// Account will be charge for using the light program.
     /// The account that will be charged/credited in case the config transaction causes space reallocation,
     /// for example when adding a new member, adding or removing a spending limit.
     /// This is usually the same as `member`, but can be a different account if needed.
+    #[fee_payer]
     #[account(mut)]
-    pub rent_payer: Option<Signer<'info>>,
+    pub rent_payer: Signer<'info>,
 
-    /// We might need it in case reallocation is needed.
-    pub system_program: Option<Program<'info, System>>,
+    // Light Related Accounts
+    #[authority]
+    #[account(
+        seeds = [CPI_AUTHORITY_PDA_SEED],
+        bump,
+    )]
+    pub cpi_authority: AccountInfo<'info>,
+    #[self_program]
+    pub squads_program: Program<'info, crate::program::SquadsMultisigProgram>,
     // In case the transaction contains Add(Remove)SpendingLimit actions,
     // `remaining_accounts` must contain the SpendingLimit accounts to be initialized/closed.
     // remaining_accounts
 }
 
 impl<'info> ConfigTransactionExecute<'info> {
-    fn validate(&self) -> Result<()> {
+    fn validate(&self, args: &ConfigTransactionExecuteArgs) -> Result<()> {
         let Self {
-            multisig,
-            proposal,
-            member,
-            ..
+            proposal, member, ..
         } = self;
+
+        // Parse multisig data from the compression args.
+        let multisig = LightMultisig::from(&args.compression_args.multisig_data);
 
         // member
         require!(
@@ -99,9 +117,13 @@ impl<'info> ConfigTransactionExecute<'info> {
 
     /// Execute the multisig transaction.
     /// The transaction must be `Approved`.
-    #[access_control(ctx.accounts.validate())]
-    pub fn config_transaction_execute(ctx: Context<'_, '_, 'info, 'info, Self>) -> Result<()> {
-        let multisig = &mut ctx.accounts.multisig;
+    #[access_control(ctx.accounts.validate(&args))]
+    pub fn config_transaction_execute(
+        ctx: Context<'_, '_, 'info, 'info, Self>,
+        args: ConfigTransactionExecuteArgs,
+    ) -> Result<()> {
+        let mut multisig = LightMultisig::from(&args.compression_args.multisig_data);
+        let multisig_account_info = &ctx.accounts.multisig;
         let transaction = &ctx.accounts.transaction;
         let proposal = &mut ctx.accounts.proposal;
 
@@ -146,7 +168,7 @@ impl<'info> ConfigTransactionExecute<'info> {
                     let (spending_limit_key, spending_limit_bump) = Pubkey::find_program_address(
                         &[
                             SEED_PREFIX,
-                            multisig.key().as_ref(),
+                            multisig_account_info.key().as_ref(),
                             SEED_SPENDING_LIMIT,
                             create_key.as_ref(),
                         ],
@@ -161,16 +183,8 @@ impl<'info> ConfigTransactionExecute<'info> {
                         .ok_or(MultisigError::MissingAccount)?;
 
                     // `rent_payer` and `system_program` must also be present.
-                    let rent_payer = &ctx
-                        .accounts
-                        .rent_payer
-                        .as_ref()
-                        .ok_or(MultisigError::MissingAccount)?;
-                    let system_program = &ctx
-                        .accounts
-                        .system_program
-                        .as_ref()
-                        .ok_or(MultisigError::MissingAccount)?;
+                    let rent_payer = &ctx.accounts.rent_payer;
+                    let system_program = &ctx.accounts.system_program;
 
                     // Initialize the SpendingLimit account.
                     create_account(
@@ -182,7 +196,7 @@ impl<'info> ConfigTransactionExecute<'info> {
                         SpendingLimit::size(members.len(), destinations.len()),
                         vec![
                             SEED_PREFIX.to_vec(),
-                            multisig.key().as_ref().to_vec(),
+                            multisig_account_info.key().as_ref().to_vec(),
                             SEED_SPENDING_LIMIT.to_vec(),
                             create_key.as_ref().to_vec(),
                             vec![spending_limit_bump],
@@ -195,7 +209,7 @@ impl<'info> ConfigTransactionExecute<'info> {
 
                     // Serialize the SpendingLimit data into the account info.
                     let spending_limit = SpendingLimit {
-                        multisig: multisig.key().to_owned(),
+                        multisig: multisig_account_info.key().to_owned(),
                         create_key: create_key.to_owned(),
                         vault_index: *vault_index,
                         amount: *amount,
@@ -225,18 +239,14 @@ impl<'info> ConfigTransactionExecute<'info> {
                         .ok_or(MultisigError::MissingAccount)?;
 
                     // `rent_payer` must also be present.
-                    let rent_payer = &ctx
-                        .accounts
-                        .rent_payer
-                        .as_ref()
-                        .ok_or(MultisigError::MissingAccount)?;
+                    let rent_payer = &ctx.accounts.rent_payer;
 
                     let spending_limit = Account::<SpendingLimit>::try_from(spending_limit_info)?;
 
                     // SpendingLimit must belong to the `multisig`.
                     require_keys_eq!(
                         spending_limit.multisig,
-                        multisig.key(),
+                        multisig_account_info.key(),
                         MultisigError::InvalidAccount
                     );
 
@@ -247,7 +257,7 @@ impl<'info> ConfigTransactionExecute<'info> {
                 }
 
                 ConfigAction::SetRentCollector { new_rent_collector } => {
-                    multisig.rent_collector = *new_rent_collector;
+                    multisig.rent_collector = OptionPubkey(*new_rent_collector);
 
                     // We don't need to invalidate prior transactions here because changing
                     // `rent_collector` doesn't affect the consensus parameters of the multisig.
@@ -257,26 +267,26 @@ impl<'info> ConfigTransactionExecute<'info> {
 
         // Make sure the multisig account can fit the updated state: added members or newly set rent_collector.
         Multisig::realloc_if_needed(
-            multisig.to_account_info(),
+            multisig_account_info.to_account_info(),
             multisig.members.len(),
-            ctx.accounts
-                .rent_payer
-                .as_ref()
-                .map(ToAccountInfo::to_account_info),
-            ctx.accounts
-                .system_program
-                .as_ref()
-                .map(ToAccountInfo::to_account_info),
+            Some(ctx.accounts.rent_payer.to_account_info()),
+            Some(ctx.accounts.system_program.to_account_info()),
         )?;
 
-        // Make sure the multisig state is valid after applying the actions.
-        multisig.invariant()?;
+        // Get cpi_authority seeds
+        let cpi_authority_bump = ctx.bumps.cpi_authority;
+        let cpi_authority_seeds = get_cpi_authority_seeds(&cpi_authority_bump);
 
         // Mark the proposal as executed.
         proposal.status = ProposalStatus::Executed {
             timestamp: Clock::get()?.unix_timestamp,
         };
 
+        // Write the changes to the compressed multisig state.
+        multisig.compressed_mutate(ctx, args.compression_args, &[&cpi_authority_seeds])?;
+
+        // Make sure the multisig state is valid after applying the actions.
+        multisig.invariant()?;
         Ok(())
     }
 }

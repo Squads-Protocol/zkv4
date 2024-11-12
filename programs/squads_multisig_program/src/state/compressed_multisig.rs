@@ -471,6 +471,12 @@ impl LightMultisig {
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, Default)]
 pub struct MemberList(pub Vec<Member>);
 
+impl MemberList {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
 impl AsByteVec for MemberList {
     fn as_byte_vec(&self) -> Vec<Vec<u8>> {
         self.0

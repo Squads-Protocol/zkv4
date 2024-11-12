@@ -170,8 +170,9 @@ pub mod squads_multisig_program {
     /// The transaction must be `Approved`.
     pub fn config_transaction_execute<'info>(
         ctx: Context<'_, '_, 'info, 'info, ConfigTransactionExecute<'info>>,
+        args: ConfigTransactionExecuteArgs,
     ) -> Result<()> {
-        ConfigTransactionExecute::config_transaction_execute(ctx)
+        ConfigTransactionExecute::config_transaction_execute(ctx, args)
     }
 
     /// Create a new vault transaction.
