@@ -151,8 +151,8 @@ pub mod squads_multisig_program {
     }
 
     /// Remove the spending limit from the controlled multisig.
-    pub fn multisig_remove_spending_limit(
-        ctx: Context<MultisigRemoveSpendingLimit>,
+    pub fn multisig_remove_spending_limit<'info>(
+        ctx: Context<'_, '_, 'info, 'info, MultisigRemoveSpendingLimit<'info>>,
         args: MultisigRemoveSpendingLimitArgs,
     ) -> Result<()> {
         MultisigRemoveSpendingLimit::multisig_remove_spending_limit(ctx, args)
