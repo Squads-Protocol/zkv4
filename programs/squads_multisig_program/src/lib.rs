@@ -198,8 +198,8 @@ pub mod squads_multisig_program {
     }
 
     /// Extend a transaction buffer account.
-    pub fn transaction_buffer_extend(
-        ctx: Context<TransactionBufferExtend>,
+    pub fn transaction_buffer_extend<'info>(
+        ctx: Context<'_, '_, 'info, 'info, TransactionBufferExtend<'info>>,
         args: TransactionBufferExtendArgs,
     ) -> Result<()> {
         TransactionBufferExtend::transaction_buffer_extend(ctx, args)
