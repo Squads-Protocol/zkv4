@@ -81,7 +81,7 @@ pub struct ConfigTransactionAccountsClose<'info> {
     pub squads_program: Program<'info, crate::program::SquadsMultisigProgram>,
 }
 
-impl<'info>ConfigTransactionAccountsClose<'info> {
+impl<'info> ConfigTransactionAccountsClose<'info> {
     /// Closes a `ConfigTransaction` and the corresponding `Proposal`.
     /// `transaction` can be closed if either:
     /// - the `proposal` is in a terminal state: `Executed`, `Rejected`, or `Cancelled`.
@@ -210,7 +210,7 @@ pub struct VaultTransactionAccountsClose<'info> {
     pub squads_program: Program<'info, crate::program::SquadsMultisigProgram>,
 }
 
-impl <'info>VaultTransactionAccountsClose<'info> {
+impl<'info> VaultTransactionAccountsClose<'info> {
     /// Closes a `VaultTransaction` and the corresponding `Proposal`.
     /// `transaction` can be closed if either:
     /// - the `proposal` is in a terminal state: `Executed`, `Rejected`, or `Cancelled`.
@@ -339,7 +339,11 @@ pub struct VaultBatchTransactionAccountClose<'info> {
 }
 
 impl<'info> VaultBatchTransactionAccountClose<'info> {
-    fn validate(&self, ctx: &Context<'_, '_, 'info, 'info, Self>, args: &TransactionAccountsCloseArgs) -> Result<()> {
+    fn validate(
+        &self,
+        ctx: &Context<'_, '_, 'info, 'info, Self>,
+        args: &TransactionAccountsCloseArgs,
+    ) -> Result<()> {
         let Self {
             multisig: multisig_account_info,
             proposal,
@@ -428,16 +432,19 @@ impl<'info> VaultBatchTransactionAccountClose<'info> {
 //endregion
 
 //region BatchAccountsClose
-#[derive(Accounts)]
+#[light_system_accounts]
+#[derive(Accounts, LightTraits)]
+#[instruction(args: TransactionAccountsCloseArgs)]
 pub struct BatchAccountsClose<'info> {
+    // CHECK: Since the multisig is read-only, validation needs to explicitly via
+    // multisig.compressed_verify_state()
     #[account(
-        seeds = [SEED_PREFIX, SEED_MULTISIG, multisig.create_key.as_ref()],
-        bump = multisig.bump,
-        constraint = multisig.rent_collector.is_some() @ MultisigError::RentReclamationDisabled,
+        seeds = [SEED_PREFIX, SEED_MULTISIG, args.compression_args.multisig_data.create_key.as_ref()],
+        bump = args.compression_args.multisig_data.bump,
+        constraint = args.compression_args.multisig_data.rent_collector.is_some() @ MultisigError::RentReclamationDisabled,
     )]
-    pub multisig: Account<'info, Multisig>,
+    pub multisig: AccountInfo<'info>,
 
-    // pub proposal: Account<'info, Proposal>,
     /// CHECK: `seeds` and `bump` verify that the account is the canonical Proposal,
     ///         the logic within `batch_accounts_close` does the rest of the checks.
     #[account(
@@ -465,21 +472,48 @@ pub struct BatchAccountsClose<'info> {
     /// CHECK: We only need to validate the address.
     #[account(
         mut,
-        address = multisig.rent_collector.unwrap().key() @ MultisigError::InvalidRentCollector,
+        address = args.compression_args.multisig_data.rent_collector.unwrap().key() @ MultisigError::InvalidRentCollector,
     )]
     pub rent_collector: AccountInfo<'info>,
 
-    pub system_program: Program<'info, System>,
+    // Light Related Accounts
+    /// Account that will pay for light protocol fees
+    #[fee_payer]
+    #[account(mut)]
+    pub fee_payer: Signer<'info>,
+
+    #[authority]
+    #[account(
+        seeds = [CPI_AUTHORITY_PDA_SEED],
+        bump,
+    )]
+    pub cpi_authority: AccountInfo<'info>,
+    #[self_program]
+    pub squads_program: Program<'info, crate::program::SquadsMultisigProgram>,
 }
 
-impl BatchAccountsClose<'_> {
+impl<'info> BatchAccountsClose<'info> {
+    fn validate(
+        &self,
+        ctx: &Context<'_, '_, 'info, 'info, Self>,
+        args: &TransactionAccountsCloseArgs,
+    ) -> Result<()> {
+        let multisig = LightMultisig::from(&args.compression_args.multisig_data);
+        multisig.compressed_verify_state(ctx, &args.compression_args)?;
+        Ok(())
+    }
+
     /// Closes Batch and the corresponding Proposal accounts for proposals in terminal states:
     /// `Executed`, `Rejected`, or `Cancelled` or stale proposals that aren't `Approved`.
     ///
     /// This instruction is only allowed to be executed when all `VaultBatchTransaction` accounts
     /// in the `batch` are already closed: `batch.size == 0`.
-    pub fn batch_accounts_close(ctx: Context<Self>) -> Result<()> {
-        let multisig = &ctx.accounts.multisig;
+    #[access_control(ctx.accounts.validate(&ctx, &args))]
+    pub fn batch_accounts_close(
+        ctx: Context<'_, '_, 'info, 'info, Self>,
+        args: TransactionAccountsCloseArgs,
+    ) -> Result<()> {
+        let multisig = LightMultisig::from(&args.compression_args.multisig_data);
         let batch = &ctx.accounts.batch;
         let proposal = &mut ctx.accounts.proposal;
         let rent_collector = &ctx.accounts.rent_collector;

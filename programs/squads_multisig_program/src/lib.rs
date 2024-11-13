@@ -108,7 +108,7 @@ pub mod squads_multisig_program {
         args: MultisigRemoveMemberArgs,
     ) -> Result<()> {
         MultisigConfig::multisig_remove_member(ctx, args)
-        }
+    }
 
     /// Set the `time_lock` config parameter for the controlled multisig.
     pub fn multisig_set_time_lock(
@@ -354,7 +354,10 @@ pub mod squads_multisig_program {
     ///
     /// This instruction is only allowed to be executed when all `VaultBatchTransaction` accounts
     /// in the `batch` are already closed: `batch.size == 0`.
-    pub fn batch_accounts_close(ctx: Context<BatchAccountsClose>) -> Result<()> {
-        BatchAccountsClose::batch_accounts_close(ctx)
+    pub fn batch_accounts_close<'info>(
+        ctx: Context<'_, '_, 'info, 'info, BatchAccountsClose<'info>>,
+        args: TransactionAccountsCloseArgs,
+    ) -> Result<()> {
+        BatchAccountsClose::batch_accounts_close(ctx, args)
     }
 }
