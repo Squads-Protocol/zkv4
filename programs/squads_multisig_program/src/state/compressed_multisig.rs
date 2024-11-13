@@ -495,6 +495,16 @@ impl AsByteVec for MemberList {
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct OptionPubkey(pub Option<Pubkey>);
 
+impl OptionPubkey {
+    pub fn unwrap(&self) -> Pubkey {
+        self.0.unwrap()
+    }
+
+    pub fn is_some(&self) -> bool {
+        self.0.is_some()
+    }
+}
+
 impl Default for OptionPubkey {
     fn default() -> Self {
         Self(None)

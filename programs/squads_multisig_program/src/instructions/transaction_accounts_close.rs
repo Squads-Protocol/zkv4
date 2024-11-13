@@ -14,15 +14,25 @@ use anchor_lang::prelude::*;
 use crate::errors::*;
 use crate::state::*;
 use crate::utils;
+use light_sdk::{light_system_accounts, LightTraits, CPI_AUTHORITY_PDA_SEED};
 
-#[derive(Accounts)]
+#[derive(AnchorSerialize, AnchorDeserialize)]
+pub struct TransactionAccountsCloseArgs {
+    pub compression_args: MutateOrVerifyCompressedMultisigArgs,
+}
+
+#[light_system_accounts]
+#[derive(Accounts, LightTraits)]
+#[instruction(args: TransactionAccountsCloseArgs)]
 pub struct ConfigTransactionAccountsClose<'info> {
+    // CHECK: Since the multisig is read-only, validation needs to explicitly via
+    // multisig.compressed_verify_state()
     #[account(
-        seeds = [SEED_PREFIX, SEED_MULTISIG, multisig.create_key.as_ref()],
-        bump = multisig.bump,
-        constraint = multisig.rent_collector.is_some() @ MultisigError::RentReclamationDisabled,
+        seeds = [SEED_PREFIX, SEED_MULTISIG, args.compression_args.multisig_data.create_key.as_ref()],
+        bump = args.compression_args.multisig_data.bump,
+        constraint = args.compression_args.multisig_data.rent_collector.is_some() @ MultisigError::RentReclamationDisabled,
     )]
-    pub multisig: Account<'info, Multisig>,
+    pub multisig: AccountInfo<'info>,
 
     /// CHECK: `seeds` and `bump` verify that the account is the canonical Proposal,
     ///         the logic within `config_transaction_accounts_close` does the rest of the checks.
@@ -51,20 +61,40 @@ pub struct ConfigTransactionAccountsClose<'info> {
     /// CHECK: We only need to validate the address.
     #[account(
         mut,
-        address = multisig.rent_collector.unwrap().key() @ MultisigError::InvalidRentCollector,
+        address = args.compression_args.multisig_data.rent_collector.unwrap().key() @ MultisigError::InvalidRentCollector,
     )]
     pub rent_collector: AccountInfo<'info>,
 
-    pub system_program: Program<'info, System>,
+    /// Account that will pay for any reallocation costs
+    #[fee_payer]
+    #[account(mut)]
+    pub fee_payer: Signer<'info>,
+
+    // Light Related Accounts
+    #[authority]
+    #[account(
+        seeds = [CPI_AUTHORITY_PDA_SEED],
+        bump,
+    )]
+    pub cpi_authority: AccountInfo<'info>,
+    #[self_program]
+    pub squads_program: Program<'info, crate::program::SquadsMultisigProgram>,
 }
 
-impl ConfigTransactionAccountsClose<'_> {
+impl<'info>ConfigTransactionAccountsClose<'info> {
     /// Closes a `ConfigTransaction` and the corresponding `Proposal`.
     /// `transaction` can be closed if either:
     /// - the `proposal` is in a terminal state: `Executed`, `Rejected`, or `Cancelled`.
     /// - the `proposal` is stale.
-    pub fn config_transaction_accounts_close(ctx: Context<Self>) -> Result<()> {
-        let multisig = &ctx.accounts.multisig;
+    pub fn config_transaction_accounts_close(
+        ctx: Context<'_, '_, 'info, 'info, Self>,
+        args: TransactionAccountsCloseArgs,
+    ) -> Result<()> {
+        let multisig = LightMultisig::from(&args.compression_args.multisig_data);
+
+        // Validate the multisig state
+        multisig.compressed_verify_state(&ctx, &args.compression_args)?;
+
         let transaction = &ctx.accounts.transaction;
         let proposal = &mut ctx.accounts.proposal;
         let rent_collector = &ctx.accounts.rent_collector;
@@ -120,14 +150,18 @@ impl ConfigTransactionAccountsClose<'_> {
     }
 }
 
-#[derive(Accounts)]
+#[light_system_accounts]
+#[derive(Accounts, LightTraits)]
+#[instruction(args: TransactionAccountsCloseArgs)]
 pub struct VaultTransactionAccountsClose<'info> {
+    // CHECK: Since the multisig is read-only, validation needs to explicitly via
+    // multisig.compressed_verify_state()
     #[account(
-        seeds = [SEED_PREFIX, SEED_MULTISIG, multisig.create_key.as_ref()],
-        bump = multisig.bump,
-        constraint = multisig.rent_collector.is_some() @ MultisigError::RentReclamationDisabled,
+        seeds = [SEED_PREFIX, SEED_MULTISIG, args.compression_args.multisig_data.create_key.as_ref()],
+        bump = args.compression_args.multisig_data.bump,
+        constraint = args.compression_args.multisig_data.rent_collector.is_some() @ MultisigError::RentReclamationDisabled,
     )]
-    pub multisig: Account<'info, Multisig>,
+    pub multisig: AccountInfo<'info>,
 
     /// CHECK: `seeds` and `bump` verify that the account is the canonical Proposal,
     ///         the logic within `vault_transaction_accounts_close` does the rest of the checks.
@@ -156,22 +190,40 @@ pub struct VaultTransactionAccountsClose<'info> {
     /// CHECK: We only need to validate the address.
     #[account(
         mut,
-        address = multisig.rent_collector.unwrap().key() @ MultisigError::InvalidRentCollector,
+        address = args.compression_args.multisig_data.rent_collector.unwrap().key() @ MultisigError::InvalidRentCollector,
     )]
     pub rent_collector: AccountInfo<'info>,
 
-    pub system_program: Program<'info, System>,
+    /// Account that will pay for any reallocation costs
+    #[fee_payer]
+    #[account(mut)]
+    pub fee_payer: Signer<'info>,
+
+    // Light Related Accounts
+    #[authority]
+    #[account(
+        seeds = [CPI_AUTHORITY_PDA_SEED],
+        bump,
+    )]
+    pub cpi_authority: AccountInfo<'info>,
+    #[self_program]
+    pub squads_program: Program<'info, crate::program::SquadsMultisigProgram>,
 }
 
-impl VaultTransactionAccountsClose<'_> {
+impl <'info>VaultTransactionAccountsClose<'info> {
     /// Closes a `VaultTransaction` and the corresponding `Proposal`.
     /// `transaction` can be closed if either:
     /// - the `proposal` is in a terminal state: `Executed`, `Rejected`, or `Cancelled`.
     /// - the `proposal` is stale and not `Approved`.
     pub fn vault_transaction_accounts_close(
-        ctx: Context<VaultTransactionAccountsClose>,
+        ctx: Context<'_, '_, 'info, 'info, Self>,
+        args: TransactionAccountsCloseArgs,
     ) -> Result<()> {
-        let multisig = &ctx.accounts.multisig;
+        let multisig = LightMultisig::from(&args.compression_args.multisig_data);
+
+        // Validate the multisig state
+        multisig.compressed_verify_state(&ctx, &args.compression_args)?;
+
         let transaction = &ctx.accounts.transaction;
         let proposal = &mut ctx.accounts.proposal;
         let rent_collector = &ctx.accounts.rent_collector;
@@ -228,14 +280,18 @@ impl VaultTransactionAccountsClose<'_> {
 }
 
 //region VaultBatchTransactionAccountClose
-#[derive(Accounts)]
+#[light_system_accounts]
+#[derive(Accounts, LightTraits)]
+#[instruction(args: TransactionAccountsCloseArgs)]
 pub struct VaultBatchTransactionAccountClose<'info> {
+    // CHECK: Since the multisig is read-only, validation needs to explicitly via
+    // multisig.compressed_verify_state()
     #[account(
-        seeds = [SEED_PREFIX, SEED_MULTISIG, multisig.create_key.as_ref()],
-        bump = multisig.bump,
-        constraint = multisig.rent_collector.is_some() @ MultisigError::RentReclamationDisabled,
+        seeds = [SEED_PREFIX, SEED_MULTISIG, args.compression_args.multisig_data.create_key.as_ref()],
+        bump = args.compression_args.multisig_data.bump,
+        constraint = args.compression_args.multisig_data.rent_collector.is_some() @ MultisigError::RentReclamationDisabled,
     )]
-    pub multisig: Account<'info, Multisig>,
+    pub multisig: AccountInfo<'info>,
 
     #[account(
         has_one = multisig @ MultisigError::ProposalForAnotherMultisig,
@@ -262,22 +318,37 @@ pub struct VaultBatchTransactionAccountClose<'info> {
     /// CHECK: We only need to validate the address.
     #[account(
         mut,
-        address = multisig.rent_collector.unwrap().key() @ MultisigError::InvalidRentCollector,
+        address = args.compression_args.multisig_data.rent_collector.unwrap().key() @ MultisigError::InvalidRentCollector,
     )]
     pub rent_collector: AccountInfo<'info>,
 
-    pub system_program: Program<'info, System>,
+    /// Account that will pay for light protocol fees
+    #[fee_payer]
+    #[account(mut)]
+    pub fee_payer: Signer<'info>,
+
+    // Light Related Accounts
+    #[authority]
+    #[account(
+        seeds = [CPI_AUTHORITY_PDA_SEED],
+        bump,
+    )]
+    pub cpi_authority: AccountInfo<'info>,
+    #[self_program]
+    pub squads_program: Program<'info, crate::program::SquadsMultisigProgram>,
 }
 
-impl VaultBatchTransactionAccountClose<'_> {
-    fn validate(&self) -> Result<()> {
+impl<'info> VaultBatchTransactionAccountClose<'info> {
+    fn validate(&self, ctx: &Context<'_, '_, 'info, 'info, Self>, args: &TransactionAccountsCloseArgs) -> Result<()> {
         let Self {
-            multisig,
+            multisig: multisig_account_info,
             proposal,
             batch,
             transaction,
             ..
         } = self;
+        let multisig = LightMultisig::from(&args.compression_args.multisig_data);
+        multisig.compressed_verify_state(ctx, &args.compression_args)?;
 
         // Transaction must be the last one in the batch.
         // We do it here instead of the Anchor macro because we want to throw a more specific error,
@@ -286,7 +357,7 @@ impl VaultBatchTransactionAccountClose<'_> {
         let last_transaction_address = Pubkey::create_program_address(
             &[
                 SEED_PREFIX,
-                multisig.key().as_ref(),
+                multisig_account_info.key().as_ref(),
                 SEED_TRANSACTION,
                 &batch.index.to_le_bytes(),
                 SEED_BATCH_TRANSACTION,
@@ -340,8 +411,11 @@ impl VaultBatchTransactionAccountClose<'_> {
     /// and the operation is only allowed if any of the following conditions is met:
     /// - the `proposal` is in a terminal state: `Executed`, `Rejected`, or `Cancelled`.
     /// - the `proposal` is stale and not `Approved`.
-    #[access_control(ctx.accounts.validate())]
-    pub fn vault_batch_transaction_account_close(ctx: Context<Self>) -> Result<()> {
+    #[access_control(ctx.accounts.validate(&ctx, &args))]
+    pub fn vault_batch_transaction_account_close(
+        ctx: Context<'_, '_, 'info, 'info, Self>,
+        args: TransactionAccountsCloseArgs,
+    ) -> Result<()> {
         let batch = &mut ctx.accounts.batch;
 
         batch.size = batch.size.checked_sub(1).expect("overflow");

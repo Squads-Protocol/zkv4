@@ -307,20 +307,22 @@ pub mod squads_multisig_program {
     /// `transaction` can be closed if either:
     /// - the `proposal` is in a terminal state: `Executed`, `Rejected`, or `Cancelled`.
     /// - the `proposal` is stale.
-    pub fn config_transaction_accounts_close(
-        ctx: Context<ConfigTransactionAccountsClose>,
+    pub fn config_transaction_accounts_close<'info>(
+        ctx: Context<'_, '_, 'info, 'info, ConfigTransactionAccountsClose<'info>>,
+        args: TransactionAccountsCloseArgs,
     ) -> Result<()> {
-        ConfigTransactionAccountsClose::config_transaction_accounts_close(ctx)
+        ConfigTransactionAccountsClose::config_transaction_accounts_close(ctx, args)
     }
 
     /// Closes a `VaultTransaction` and the corresponding `Proposal`.
     /// `transaction` can be closed if either:
     /// - the `proposal` is in a terminal state: `Executed`, `Rejected`, or `Cancelled`.
     /// - the `proposal` is stale and not `Approved`.
-    pub fn vault_transaction_accounts_close(
-        ctx: Context<VaultTransactionAccountsClose>,
+    pub fn vault_transaction_accounts_close<'info>(
+        ctx: Context<'_, '_, 'info, 'info, VaultTransactionAccountsClose<'info>>,
+        args: TransactionAccountsCloseArgs,
     ) -> Result<()> {
-        VaultTransactionAccountsClose::vault_transaction_accounts_close(ctx)
+        VaultTransactionAccountsClose::vault_transaction_accounts_close(ctx, args)
     }
 
     /// Closes a `VaultBatchTransaction` belonging to the `batch` and `proposal`.
@@ -328,10 +330,11 @@ pub mod squads_multisig_program {
     /// - it's marked as executed within the `batch`;
     /// - the `proposal` is in a terminal state: `Executed`, `Rejected`, or `Cancelled`.
     /// - the `proposal` is stale and not `Approved`.
-    pub fn vault_batch_transaction_account_close(
-        ctx: Context<VaultBatchTransactionAccountClose>,
+    pub fn vault_batch_transaction_account_close<'info>(
+        ctx: Context<'_, '_, 'info, 'info, VaultBatchTransactionAccountClose<'info>>,
+        args: TransactionAccountsCloseArgs,
     ) -> Result<()> {
-        VaultBatchTransactionAccountClose::vault_batch_transaction_account_close(ctx)
+        VaultBatchTransactionAccountClose::vault_batch_transaction_account_close(ctx, args)
     }
 
     /// Closes Batch and the corresponding Proposal accounts for proposals in terminal states:
