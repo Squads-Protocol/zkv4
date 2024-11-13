@@ -250,8 +250,11 @@ pub mod squads_multisig_program {
     }
 
     /// Update status of a multisig proposal from `Draft` to `Active`.
-    pub fn proposal_activate(ctx: Context<ProposalActivate>) -> Result<()> {
-        ProposalActivate::proposal_activate(ctx)
+    pub fn proposal_activate<'info>(
+        ctx: Context<'_, '_, 'info, 'info, ProposalActivate<'info>>,
+        args: ProposalActivateArgs,
+    ) -> Result<()> {
+        ProposalActivate::proposal_activate(ctx, args)
     }
 
     /// Approve a multisig proposal on behalf of the `member`.
