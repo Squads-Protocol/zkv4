@@ -227,7 +227,10 @@ pub mod squads_multisig_program {
     }
 
     /// Create a new batch.
-    pub fn batch_create(ctx: Context<BatchCreate>, args: BatchCreateArgs) -> Result<()> {
+    pub fn batch_create<'info>(
+        ctx: Context<'_, '_, 'info, 'info, BatchCreate<'info>>,
+        args: BatchCreateArgs,
+    ) -> Result<()> {
         BatchCreate::batch_create(ctx, args)
     }
 
