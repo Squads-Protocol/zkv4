@@ -296,8 +296,8 @@ pub mod squads_multisig_program {
     }
 
     /// Use a spending limit to transfer tokens from a multisig vault to a destination account.
-    pub fn spending_limit_use(
-        ctx: Context<SpendingLimitUse>,
+    pub fn spending_limit_use<'info>(
+        ctx: Context<'_, '_, 'info, 'info, SpendingLimitUse<'info>>,
         args: SpendingLimitUseArgs,
     ) -> Result<()> {
         SpendingLimitUse::spending_limit_use(ctx, args)

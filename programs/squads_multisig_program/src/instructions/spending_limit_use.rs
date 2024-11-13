@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token_2022::TransferChecked;
 use anchor_spl::token_interface;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
+use light_sdk::{light_system_accounts, LightTraits, CPI_AUTHORITY_PDA_SEED};
 
 use crate::errors::*;
 use crate::state::*;
@@ -14,18 +15,27 @@ pub struct SpendingLimitUseArgs {
     pub decimals: u8,
     /// Memo used for indexing.
     pub memo: Option<String>,
+    /// Compression args for the multisig account
+    pub compression_args: MutateOrVerifyCompressedMultisigArgs,
 }
 
-#[derive(Accounts)]
+#[light_system_accounts]
+#[derive(Accounts, LightTraits)]
+#[instruction(args: SpendingLimitUseArgs)]
 pub struct SpendingLimitUse<'info> {
     /// The multisig account the `spending_limit` is for.
+    // CHECK: Multisig is read-only which means validation needs to happen
+    // explicitly via multisig.compressed_verify_state()
     #[account(
-        seeds = [SEED_PREFIX, SEED_MULTISIG, multisig.create_key.as_ref()],
-        bump = multisig.bump,
+        seeds = [SEED_PREFIX, SEED_MULTISIG, args.compression_args.multisig_data.create_key.as_ref()],
+        bump = args.compression_args.multisig_data.bump,
     )]
-    pub multisig: Box<Account<'info, Multisig>>,
+    pub multisig: AccountInfo<'info>,
 
     pub member: Signer<'info>,
+
+    #[fee_payer]
+    pub payer: Signer<'info>,
 
     /// The SpendingLimit account to use.
     #[account(
@@ -59,9 +69,6 @@ pub struct SpendingLimitUse<'info> {
     #[account(mut)]
     pub destination: AccountInfo<'info>,
 
-    /// In case `spending_limit.mint` is SOL.
-    pub system_program: Option<Program<'info, System>>,
-
     /// The mint of the tokens to transfer in case `spending_limit.mint` is an SPL token.
     /// CHECK: We do the checks in `SpendingLimitUse::validate`.
     pub mint: Option<InterfaceAccount<'info, Mint>>,
@@ -84,17 +91,35 @@ pub struct SpendingLimitUse<'info> {
 
     /// In case `spending_limit.mint` is an SPL token.
     pub token_program: Option<Interface<'info, TokenInterface>>,
+
+    // Light Related Accounts
+    #[authority]
+    #[account(
+        seeds = [CPI_AUTHORITY_PDA_SEED],
+        bump,
+    )]
+    pub cpi_authority: AccountInfo<'info>,
+    #[self_program]
+    pub squads_program: Program<'info, crate::program::SquadsMultisigProgram>,
 }
 
-impl SpendingLimitUse<'_> {
-    fn validate(&self) -> Result<()> {
+impl<'info> SpendingLimitUse<'info> {
+    fn validate(
+        &self,
+        ctx: &Context<'_, '_, 'info, 'info, SpendingLimitUse<'info>>,
+        args: &SpendingLimitUseArgs,
+    ) -> Result<()> {
         let Self {
-            multisig,
             member,
             spending_limit,
             mint,
             ..
         } = self;
+
+        let multisig = LightMultisig::from(&args.compression_args.multisig_data);
+
+        // Validate the multisig state
+        multisig.compressed_verify_state(ctx, &args.compression_args)?;
 
         // member
         require!(
@@ -136,8 +161,11 @@ impl SpendingLimitUse<'_> {
     }
 
     /// Use a spending limit to transfer tokens from a multisig vault to a destination account.
-    #[access_control(ctx.accounts.validate())]
-    pub fn spending_limit_use(ctx: Context<Self>, args: SpendingLimitUseArgs) -> Result<()> {
+    #[access_control(ctx.accounts.validate(&ctx, &args))]
+    pub fn spending_limit_use(
+        ctx: Context<'_, '_, 'info, 'info, SpendingLimitUse<'info>>,
+        args: SpendingLimitUseArgs,
+    ) -> Result<()> {
         let spending_limit = &mut ctx.accounts.spending_limit;
         let vault = &mut ctx.accounts.vault;
         let destination = &mut ctx.accounts.destination;
@@ -173,11 +201,7 @@ impl SpendingLimitUse<'_> {
         // Transfer tokens.
         if spending_limit.mint == Pubkey::default() {
             // Transfer using the system_program::transfer.
-            let system_program = &ctx
-                .accounts
-                .system_program
-                .as_ref()
-                .ok_or(MultisigError::MissingAccount)?;
+            let system_program = &ctx.accounts.system_program;
 
             // Sanity check for the decimals. Similar to the one in token_interface::transfer_checked.
             require!(args.decimals == 9, MultisigError::DecimalsMismatch);
