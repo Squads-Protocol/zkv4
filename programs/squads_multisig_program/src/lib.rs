@@ -235,8 +235,8 @@ pub mod squads_multisig_program {
     }
 
     /// Add a transaction to the batch.
-    pub fn batch_add_transaction(
-        ctx: Context<BatchAddTransaction>,
+    pub fn batch_add_transaction<'info>(
+        ctx: Context<'_, '_, 'info, 'info, BatchAddTransaction<'info>>,
         args: BatchAddTransactionArgs,
     ) -> Result<()> {
         BatchAddTransaction::batch_add_transaction(ctx, args)

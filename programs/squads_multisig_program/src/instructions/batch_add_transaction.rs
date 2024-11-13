@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use light_sdk::{light_system_accounts, LightTraits, CPI_AUTHORITY_PDA_SEED};
 
 use crate::errors::*;
 use crate::state::*;
@@ -6,20 +7,24 @@ use crate::TransactionMessage;
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct BatchAddTransactionArgs {
+    pub compression_args: MutateOrVerifyCompressedMultisigArgs,
     /// Number of ephemeral signing PDAs required by the transaction.
     pub ephemeral_signers: u8,
     pub transaction_message: Vec<u8>,
 }
 
-#[derive(Accounts)]
+#[light_system_accounts]
+#[derive(Accounts, LightTraits)]
 #[instruction(args: BatchAddTransactionArgs)]
 pub struct BatchAddTransaction<'info> {
     /// Multisig account this batch belongs to.
+    // CHECK: Multisig is read-only which means validation needs to happen
+    // explicitly via multisig.compressed_verify_state()
     #[account(
-        seeds = [SEED_PREFIX, SEED_MULTISIG, multisig.create_key.as_ref()],
-        bump = multisig.bump,
+        seeds = [SEED_PREFIX, SEED_MULTISIG, args.compression_args.multisig_data.create_key.as_ref()],
+        bump = args.compression_args.multisig_data.bump,
     )]
-    pub multisig: Account<'info, Multisig>,
+    pub multisig: AccountInfo<'info>,
 
     /// The proposal account associated with the batch.
     #[account(
@@ -67,21 +72,38 @@ pub struct BatchAddTransaction<'info> {
     pub member: Signer<'info>,
 
     /// The payer for the batch transaction account rent.
+    #[fee_payer]
     #[account(mut)]
     pub rent_payer: Signer<'info>,
 
-    pub system_program: Program<'info, System>,
+    // Light Related Accounts
+    #[authority]
+    #[account(
+        seeds = [CPI_AUTHORITY_PDA_SEED],
+        bump,
+    )]
+    pub cpi_authority: AccountInfo<'info>,
+    #[self_program]
+    pub squads_program: Program<'info, crate::program::SquadsMultisigProgram>,
 }
 
-impl BatchAddTransaction<'_> {
-    fn validate(&self) -> Result<()> {
+impl<'info> BatchAddTransaction<'info> {
+    fn validate(
+        &self,
+        ctx: &Context<'_, '_, 'info, 'info, Self>,
+        args: &BatchAddTransactionArgs,
+    ) -> Result<()> {
         let Self {
-            multisig,
             member,
             proposal,
             batch,
             ..
         } = self;
+
+        let multisig = LightMultisig::from(&args.compression_args.multisig_data);
+
+        // Validate the multisig state
+        multisig.compressed_verify_state(ctx, &args.compression_args)?;
 
         // `member`
         require!(
@@ -107,8 +129,11 @@ impl BatchAddTransaction<'_> {
     }
 
     /// Add a transaction to the batch.
-    #[access_control(ctx.accounts.validate())]
-    pub fn batch_add_transaction(ctx: Context<Self>, args: BatchAddTransactionArgs) -> Result<()> {
+    #[access_control(ctx.accounts.validate(&ctx, &args))]
+    pub fn batch_add_transaction(
+        ctx: Context<'_, '_, 'info, 'info, Self>,
+        args: BatchAddTransactionArgs,
+    ) -> Result<()> {
         let batch = &mut ctx.accounts.batch;
         let transaction = &mut ctx.accounts.transaction;
 
