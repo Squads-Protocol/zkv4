@@ -143,8 +143,8 @@ pub mod squads_multisig_program {
     }
 
     /// Create a new spending limit for the controlled multisig.
-    pub fn multisig_add_spending_limit(
-        ctx: Context<MultisigAddSpendingLimit>,
+    pub fn multisig_add_spending_limit<'info>(
+        ctx: Context<'_, '_, 'info, 'info, MultisigAddSpendingLimit<'info>>,
         args: MultisigAddSpendingLimitArgs,
     ) -> Result<()> {
         MultisigAddSpendingLimit::multisig_add_spending_limit(ctx, args)

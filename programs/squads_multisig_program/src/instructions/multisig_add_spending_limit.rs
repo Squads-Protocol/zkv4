@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use light_sdk::{light_system_accounts, LightTraits, CPI_AUTHORITY_PDA_SEED};
 
 use crate::errors::*;
 use crate::state::*;
@@ -26,16 +27,21 @@ pub struct MultisigAddSpendingLimitArgs {
     pub destinations: Vec<Pubkey>,
     /// Memo is used for indexing only.
     pub memo: Option<String>,
+    /// Compression related arguments.
+    pub compression_args: MutateOrVerifyCompressedMultisigArgs,
 }
 
-#[derive(Accounts)]
+#[light_system_accounts]
+#[derive(Accounts, LightTraits)]
 #[instruction(args: MultisigAddSpendingLimitArgs)]
 pub struct MultisigAddSpendingLimit<'info> {
+    // CHECK: Multisig is read-only which means validation needs to happen
+    // explicitly via multisig.compressed_verify_state()
     #[account(
-        seeds = [SEED_PREFIX, SEED_MULTISIG, multisig.create_key.as_ref()],
-        bump = multisig.bump,
+        seeds = [SEED_PREFIX, SEED_MULTISIG, args.compression_args.multisig_data.create_key.as_ref()],
+        bump = args.compression_args.multisig_data.bump,
     )]
-    multisig: Account<'info, Multisig>,
+    pub multisig: AccountInfo<'info>,
 
     /// Multisig `config_authority` that must authorize the configuration change.
     pub config_authority: Signer<'info>,
@@ -55,18 +61,37 @@ pub struct MultisigAddSpendingLimit<'info> {
     pub spending_limit: Account<'info, SpendingLimit>,
 
     /// This is usually the same as `config_authority`, but can be a different account if needed.
+    #[fee_payer]
     #[account(mut)]
     pub rent_payer: Signer<'info>,
 
-    pub system_program: Program<'info, System>,
+    // Light Related Accounts
+    #[authority]
+    #[account(
+        seeds = [CPI_AUTHORITY_PDA_SEED],
+        bump,
+    )]
+    pub cpi_authority: AccountInfo<'info>,
+    #[self_program]
+    pub squads_program: Program<'info, crate::program::SquadsMultisigProgram>,
+
 }
 
-impl MultisigAddSpendingLimit<'_> {
-    fn validate(&self) -> Result<()> {
+impl<'info> MultisigAddSpendingLimit<'info> {
+    fn validate(
+        &self,
+        ctx: &Context<'_, '_, 'info, 'info, Self>,
+        args: &MultisigAddSpendingLimitArgs,
+    ) -> Result<()> {
+        let multisig = LightMultisig::from(&args.compression_args.multisig_data);
+
+        // Validate the multisig state
+        multisig.compressed_verify_state(&ctx, &args.compression_args)?;
+
         // config_authority
         require_keys_eq!(
             self.config_authority.key(),
-            self.multisig.config_authority,
+            multisig.config_authority,
             MultisigError::Unauthorized
         );
 
@@ -78,9 +103,9 @@ impl MultisigAddSpendingLimit<'_> {
     /// Create a new spending limit for the controlled multisig.
     /// NOTE: This instruction must be called only by the `config_authority` if one is set (Controlled Multisig).
     ///       Uncontrolled Mustisigs should use `config_transaction_create` instead.
-    #[access_control(ctx.accounts.validate())]
+    #[access_control(ctx.accounts.validate(&ctx, &args))]
     pub fn multisig_add_spending_limit(
-        ctx: Context<Self>,
+        ctx: Context<'_, '_, 'info, 'info, Self>,
         args: MultisigAddSpendingLimitArgs,
     ) -> Result<()> {
         let spending_limit = &mut ctx.accounts.spending_limit;
