@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use light_sdk::{light_system_accounts, LightTraits, CPI_AUTHORITY_PDA_SEED};
 
 use crate::errors::*;
 use crate::state::MAX_BUFFER_SIZE;
@@ -16,16 +17,21 @@ pub struct TransactionBufferCreateArgs {
     pub final_buffer_size: u16,
     /// Initial slice of the buffer.
     pub buffer: Vec<u8>,
+    /// Compression args for the multisig account
+    pub compression_args: MutateOrVerifyCompressedMultisigArgs,
 }
 
-#[derive(Accounts)]
+#[light_system_accounts]
+#[derive(Accounts, LightTraits)]
 #[instruction(args: TransactionBufferCreateArgs)]
 pub struct TransactionBufferCreate<'info> {
+    // CHECK: Multisig is read-only which means validation needs to happen
+    // explicitly via multisig.compressed_verify_state()
     #[account(
-        seeds = [SEED_PREFIX, SEED_MULTISIG, multisig.create_key.as_ref()],
-        bump = multisig.bump,
+        seeds = [SEED_PREFIX, SEED_MULTISIG, args.compression_args.multisig_data.create_key.as_ref()],
+        bump = args.compression_args.multisig_data.bump,
     )]
-    pub multisig: Account<'info, Multisig>,
+    pub multisig: AccountInfo<'info>,
 
     #[account(
         init,
@@ -46,17 +52,33 @@ pub struct TransactionBufferCreate<'info> {
     pub creator: Signer<'info>,
 
     /// The payer for the transaction account rent.
+    #[fee_payer]
     #[account(mut)]
     pub rent_payer: Signer<'info>,
 
-    pub system_program: Program<'info, System>,
+    // Light Related Accounts
+    #[authority]
+    #[account(
+        seeds = [CPI_AUTHORITY_PDA_SEED],
+        bump,
+    )]
+    pub cpi_authority: AccountInfo<'info>,
+    #[self_program]
+    pub squads_program: Program<'info, crate::program::SquadsMultisigProgram>,
 }
 
-impl TransactionBufferCreate<'_> {
-    fn validate(&self, args: &TransactionBufferCreateArgs) -> Result<()> {
-        let Self {
-            multisig, creator, ..
-        } = self;
+impl <'info>TransactionBufferCreate<'info> {
+    fn validate(
+        &self,
+        ctx: &Context<'_, '_, 'info, 'info, TransactionBufferCreate<'info>>,
+        args: &TransactionBufferCreateArgs,
+    ) -> Result<()> {
+        let Self { creator, .. } = self;
+
+        let multisig = LightMultisig::from(&args.compression_args.multisig_data);
+
+        // Validate the multisig state
+        multisig.compressed_verify_state(ctx, &args.compression_args)?;
 
         // creator is a member in the multisig
         require!(
@@ -78,23 +100,23 @@ impl TransactionBufferCreate<'_> {
     }
 
     /// Create a new vault transaction.
-    #[access_control(ctx.accounts.validate(&args))]
+    #[access_control(ctx.accounts.validate(&ctx, &args))]
     pub fn transaction_buffer_create(
-        ctx: Context<Self>,
+        ctx: Context<'_, '_, 'info, 'info, TransactionBufferCreate<'info>>,
         args: TransactionBufferCreateArgs,
     ) -> Result<()> {
         // Mutable Accounts
         let transaction_buffer = &mut ctx.accounts.transaction_buffer;
 
         // Readonly Accounts
-        let multisig = &ctx.accounts.multisig;
+        let multisig_account_info = &ctx.accounts.multisig;
         let creator = &mut ctx.accounts.creator;
 
         // Get the buffer index.
         let buffer_index = args.buffer_index;
 
         // Initialize the transaction fields.
-        transaction_buffer.multisig = multisig.key();
+        transaction_buffer.multisig = multisig_account_info.key();
         transaction_buffer.creator = creator.key();
         transaction_buffer.vault_index = args.vault_index;
         transaction_buffer.buffer_index = buffer_index;

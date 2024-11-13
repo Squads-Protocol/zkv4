@@ -185,8 +185,8 @@ pub mod squads_multisig_program {
     }
 
     /// Create a transaction buffer account.
-    pub fn transaction_buffer_create(
-        ctx: Context<TransactionBufferCreate>,
+    pub fn transaction_buffer_create<'info>(
+        ctx: Context<'_, '_, 'info, 'info, TransactionBufferCreate<'info>>,
         args: TransactionBufferCreateArgs,
     ) -> Result<()> {
         TransactionBufferCreate::transaction_buffer_create(ctx, args)
