@@ -1,17 +1,27 @@
 use anchor_lang::prelude::*;
+use light_sdk::{light_system_accounts, LightTraits, CPI_AUTHORITY_PDA_SEED};
 
 use crate::errors::*;
 use crate::state::*;
 use crate::utils::*;
 
-#[derive(Accounts)]
+#[derive(AnchorSerialize, AnchorDeserialize)]
+pub struct BatchExecuteTransactionArgs {
+    pub compression_args: MutateOrVerifyCompressedMultisigArgs,
+}
+
+#[light_system_accounts]
+#[derive(Accounts, LightTraits)]
+#[instruction(args: BatchExecuteTransactionArgs)]
 pub struct BatchExecuteTransaction<'info> {
     /// Multisig account this batch belongs to.
+    // CHECK: Multisig is read-only which means validation needs to happen
+    // explicitly via multisig.compressed_verify_state()
     #[account(
-        seeds = [SEED_PREFIX, SEED_MULTISIG, multisig.create_key.as_ref()],
-        bump = multisig.bump,
+        seeds = [SEED_PREFIX, SEED_MULTISIG, args.compression_args.multisig_data.create_key.as_ref()],
+        bump = args.compression_args.multisig_data.bump,
     )]
-    pub multisig: Account<'info, Multisig>,
+    pub multisig: AccountInfo<'info>,
 
     /// Member of the multisig.
     pub member: Signer<'info>,
@@ -56,6 +66,20 @@ pub struct BatchExecuteTransaction<'info> {
         bump = transaction.bump,
     )]
     pub transaction: Account<'info, VaultBatchTransaction>,
+
+    // Light Related Accounts
+    #[fee_payer]
+    #[account(mut)]
+    pub payer: Signer<'info>,
+
+    #[authority]
+    #[account(
+        seeds = [CPI_AUTHORITY_PDA_SEED],
+        bump,
+    )]
+    pub cpi_authority: AccountInfo<'info>,
+    #[self_program]
+    pub squads_program: Program<'info, crate::program::SquadsMultisigProgram>,
     //
     // `remaining_accounts` must include the following accounts in the exact order:
     // 1. AddressLookupTable accounts in the order they appear in `message.address_table_lookups`.
@@ -63,14 +87,20 @@ pub struct BatchExecuteTransaction<'info> {
     // 3. Accounts in the order they appear in `message.address_table_lookups`.
 }
 
-impl BatchExecuteTransaction<'_> {
-    fn validate(&self) -> Result<()> {
+impl<'info> BatchExecuteTransaction<'info> {
+    fn validate(
+        &self,
+        ctx: &Context<'_, '_, 'info, 'info, Self>,
+        args: &BatchExecuteTransactionArgs,
+    ) -> Result<()> {
         let Self {
-            multisig,
-            member,
-            proposal,
-            ..
+            member, proposal, ..
         } = self;
+
+        let multisig = LightMultisig::from(&args.compression_args.multisig_data);
+
+        // Validate the multisig state
+        multisig.compressed_verify_state(&ctx, &args.compression_args)?;
 
         // `member`
         require!(
@@ -103,9 +133,13 @@ impl BatchExecuteTransaction<'_> {
     }
 
     /// Execute a transaction from the batch.
-    #[access_control(ctx.accounts.validate())]
-    pub fn batch_execute_transaction(ctx: Context<Self>) -> Result<()> {
-        let multisig = &mut ctx.accounts.multisig;
+    #[access_control(ctx.accounts.validate(&ctx, &args))]
+    pub fn batch_execute_transaction(
+        ctx: Context<'_, '_, 'info, 'info, Self>,
+        args: BatchExecuteTransactionArgs,
+    ) -> Result<()> {
+        let multisig = LightMultisig::from(&args.compression_args.multisig_data);
+        let multisig_account_info = &ctx.accounts.multisig;
         let proposal = &mut ctx.accounts.proposal;
         let batch = &mut ctx.accounts.batch;
 
@@ -115,7 +149,7 @@ impl BatchExecuteTransaction<'_> {
         // Instead only make use of the returned `transaction` value.
         let transaction = ctx.accounts.transaction.take();
 
-        let multisig_key = multisig.key();
+        let multisig_key = multisig_account_info.key();
         let batch_key = batch.key();
 
         let vault_seeds = &[

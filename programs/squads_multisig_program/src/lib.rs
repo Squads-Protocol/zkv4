@@ -108,7 +108,7 @@ pub mod squads_multisig_program {
         args: MultisigRemoveMemberArgs,
     ) -> Result<()> {
         MultisigConfig::multisig_remove_member(ctx, args)
-    }
+        }
 
     /// Set the `time_lock` config parameter for the controlled multisig.
     pub fn multisig_set_time_lock(
@@ -243,8 +243,11 @@ pub mod squads_multisig_program {
     }
 
     /// Execute a transaction from the batch.
-    pub fn batch_execute_transaction(ctx: Context<BatchExecuteTransaction>) -> Result<()> {
-        BatchExecuteTransaction::batch_execute_transaction(ctx)
+    pub fn batch_execute_transaction<'info>(
+        ctx: Context<'_, '_, 'info, 'info, BatchExecuteTransaction<'info>>,
+        args: BatchExecuteTransactionArgs,
+    ) -> Result<()> {
+        BatchExecuteTransaction::batch_execute_transaction(ctx, args)
     }
 
     /// Create a new multisig proposal.
