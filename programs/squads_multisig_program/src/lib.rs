@@ -95,51 +95,57 @@ pub mod squads_multisig_program {
     }
 
     /// Add a new member to the controlled multisig.
-    pub fn multisig_add_member(
-        ctx: Context<MultisigConfig>,
+    pub fn multisig_add_member<'info>(
+        ctx: Context<'_, '_, 'info, 'info, MultisigConfig<'info>>,
         args: MultisigAddMemberArgs,
+        compression_args: MutateOrVerifyCompressedMultisigArgs,
     ) -> Result<()> {
-        MultisigConfig::multisig_add_member(ctx, args)
+        MultisigConfig::multisig_add_member(ctx, args, compression_args)
     }
 
     /// Remove a member/key from the controlled multisig.
-    pub fn multisig_remove_member(
-        ctx: Context<MultisigConfig>,
+    pub fn multisig_remove_member<'info>(
+        ctx: Context<'_, '_, 'info, 'info, MultisigConfig<'info>>,
         args: MultisigRemoveMemberArgs,
+        compression_args: MutateOrVerifyCompressedMultisigArgs,
     ) -> Result<()> {
-        MultisigConfig::multisig_remove_member(ctx, args)
+        MultisigConfig::multisig_remove_member(ctx, args, compression_args)
     }
 
     /// Set the `time_lock` config parameter for the controlled multisig.
-    pub fn multisig_set_time_lock(
-        ctx: Context<MultisigConfig>,
+    pub fn multisig_set_time_lock<'info>(
+        ctx: Context<'_, '_, 'info, 'info, MultisigConfig<'info>>,
         args: MultisigSetTimeLockArgs,
+        compression_args: MutateOrVerifyCompressedMultisigArgs,
     ) -> Result<()> {
-        MultisigConfig::multisig_set_time_lock(ctx, args)
+        MultisigConfig::multisig_set_time_lock(ctx, args, compression_args)
     }
 
     /// Set the `threshold` config parameter for the controlled multisig.
-    pub fn multisig_change_threshold(
-        ctx: Context<MultisigConfig>,
+    pub fn multisig_change_threshold<'info>(
+        ctx: Context<'_, '_, 'info, 'info, MultisigConfig<'info>>,
         args: MultisigChangeThresholdArgs,
+        compression_args: MutateOrVerifyCompressedMultisigArgs,
     ) -> Result<()> {
-        MultisigConfig::multisig_change_threshold(ctx, args)
+        MultisigConfig::multisig_change_threshold(ctx, args, compression_args)
     }
 
     /// Set the multisig `config_authority`.
-    pub fn multisig_set_config_authority(
-        ctx: Context<MultisigConfig>,
+    pub fn multisig_set_config_authority<'info>(
+        ctx: Context<'_, '_, 'info, 'info, MultisigConfig<'info>>,
         args: MultisigSetConfigAuthorityArgs,
+        compression_args: MutateOrVerifyCompressedMultisigArgs,
     ) -> Result<()> {
-        MultisigConfig::multisig_set_config_authority(ctx, args)
+        MultisigConfig::multisig_set_config_authority(ctx, args, compression_args)
     }
 
     /// Set the multisig `rent_collector`.
-    pub fn multisig_set_rent_collector(
-        ctx: Context<MultisigConfig>,
+    pub fn multisig_set_rent_collector<'info>(
+        ctx: Context<'_, '_, 'info, 'info, MultisigConfig<'info>>,
         args: MultisigSetRentCollectorArgs,
+        compression_args: MutateOrVerifyCompressedMultisigArgs,
     ) -> Result<()> {
-        MultisigConfig::multisig_set_rent_collector(ctx, args)
+        MultisigConfig::multisig_set_rent_collector(ctx, args, compression_args)
     }
 
     /// Create a new spending limit for the controlled multisig.
